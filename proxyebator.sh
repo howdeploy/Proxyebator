@@ -346,6 +346,85 @@ server_install_deps() {
     fi
 }
 
+# ── CHISEL DOWNLOAD AND AUTH SETUP ────────────────────────────────────────────
+
+server_download_chisel() {
+    local CHISEL_FALLBACK_VER="v1.11.3"
+    local CHISEL_VER
+    CHISEL_VER=$(curl -sf --max-time 10 \
+        "https://api.github.com/repos/jpillora/chisel/releases/latest" \
+        | grep -o '"tag_name": "[^"]*"' | grep -o 'v[0-9.]*') \
+        || CHISEL_VER=""
+
+    if [[ -z "$CHISEL_VER" ]]; then
+        log_warn "Could not fetch latest Chisel version from GitHub API — using fallback ${CHISEL_FALLBACK_VER}"
+        CHISEL_VER="$CHISEL_FALLBACK_VER"
+    fi
+
+    # Asset format: chisel_X.Y.Z_linux_ARCH.gz (not .tar.gz — use gunzip)
+    local download_url="https://github.com/jpillora/chisel/releases/download/${CHISEL_VER}/chisel_${CHISEL_VER#v}_linux_${ARCH}.gz"
+    log_info "Downloading Chisel ${CHISEL_VER} for ${ARCH} from GitHub..."
+
+    curl -fLo /tmp/chisel.gz "$download_url" || die "Failed to download Chisel from $download_url"
+    gunzip -f /tmp/chisel.gz
+    chmod +x /tmp/chisel
+    mv /tmp/chisel /usr/local/bin/chisel
+
+    /usr/local/bin/chisel --version || die "Chisel binary not working after install"
+    log_info "Chisel installed: $(/usr/local/bin/chisel --version 2>&1 | head -1)"
+}
+
+server_setup_auth() {
+    mkdir -p /etc/chisel
+    mkdir -p /etc/proxyebator
+
+    # Write auth.json with correct remote pattern [".*:.*"] — NOT [""] (empty fails)
+    cat > /etc/chisel/auth.json << EOF
+{
+  "${AUTH_USER}:${AUTH_TOKEN}": [".*:.*"]
+}
+EOF
+
+    chmod 600 /etc/chisel/auth.json
+    # Ownership must match systemd User=nobody so Chisel can read the file
+    chown nobody:nogroup /etc/chisel/auth.json
+    log_info "Auth file created: /etc/chisel/auth.json (chmod 600)"
+}
+
+# ── SYSTEMD SERVICE CREATION ───────────────────────────────────────────────────
+
+server_create_systemd() {
+    # Write systemd unit file
+    # CRITICAL: --host and -p are SEPARATE flags (combined form ignored by Chisel)
+    # CRITICAL: --authfile not --auth (credentials not exposed in ps aux)
+    # CRITICAL: --socks5 required for SOCKS5 mode
+    # CRITICAL: --reverse NOT included (not needed for SOCKS5, increases attack surface)
+    # CRITICAL: User=nobody NOT DynamicUser=yes (DynamicUser changes UID on restart, breaks authfile ownership)
+    cat > /etc/systemd/system/proxyebator.service << 'UNIT'
+[Unit]
+Description=Chisel Tunnel Server (proxyebator)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/chisel server \
+  --host 127.0.0.1 \
+  -p 7777 \
+  --authfile /etc/chisel/auth.json \
+  --socks5
+Restart=always
+RestartSec=5
+User=nobody
+Group=nogroup
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    systemctl daemon-reload
+    systemctl enable --now proxyebator || die "Failed to start proxyebator.service"
+    log_info "Chisel systemd service: $(systemctl is-active proxyebator 2>/dev/null || echo 'unknown')"
+}
+
 # ── MODE STUBS ────────────────────────────────────────────────────────────────
 # Filled in by later phases/plans
 
@@ -356,10 +435,12 @@ server_main() {
     server_collect_params
     server_show_summary
     server_install_deps
-    # Phase 2 Plan 02+ will add: server_download_chisel, server_setup_auth,
-    # server_configure_nginx, server_obtain_tls, server_create_systemd,
+    server_download_chisel
+    server_setup_auth
+    server_create_systemd
+    # Phase 2 Plan 03+ will add: server_configure_nginx, server_obtain_tls,
     # server_configure_firewall, server_save_config, server_verify
-    log_warn "Phase 2 Plan 01 complete: params collected, deps installed. Remaining steps in Plan 02+."
+    log_warn "Phase 2 Plan 02 complete: Chisel installed and running. Remaining: nginx, TLS, firewall."
 }
 
 client_main() {

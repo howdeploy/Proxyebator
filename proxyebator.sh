@@ -143,6 +143,209 @@ gen_auth_token() {
     openssl rand -base64 24 | tr -d '\n'
 }
 
+# ── SERVER PARAMETER COLLECTION ───────────────────────────────────────────────
+
+prompt_domain() {
+    if [[ -n "${DOMAIN:-}" ]]; then
+        log_info "Domain set via CLI flag: ${DOMAIN}"
+        return
+    fi
+    printf "${CYAN}[?]${NC} Enter your domain name (e.g. example.com): "
+    read -r DOMAIN
+    [[ -n "$DOMAIN" ]] || die "Domain is required"
+}
+
+validate_domain() {
+    # Format check
+    printf '%s' "$DOMAIN" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' \
+        || die "Invalid domain format: ${DOMAIN}"
+
+    # Get server public IP
+    local server_ip=""
+    server_ip=$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null) \
+        || server_ip=$(curl -sf --max-time 5 https://ifconfig.me 2>/dev/null) \
+        || die "Could not determine server public IP — check internet connectivity"
+
+    # Resolve domain A-record via DNS-over-HTTPS (no dig/host dependency)
+    local dns_resp domain_ip
+    dns_resp=$(curl -sf --max-time 10 "https://dns.google/resolve?name=${DOMAIN}&type=A" 2>/dev/null) \
+        || die "DNS resolution request failed — check internet connectivity"
+    domain_ip=$(printf '%s' "$dns_resp" | grep -oP '"data"\s*:\s*"\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+    [[ -n "$domain_ip" ]] \
+        || die "Could not resolve domain — check DNS A-record for ${DOMAIN}"
+
+    # Cloudflare detection: check first octet against known CF ranges
+    local first_octet
+    first_octet=$(printf '%s' "$domain_ip" | cut -d. -f1)
+    case "$first_octet" in
+        103|104|108|141|162|172|173|188|190|197|198)
+            log_warn "Domain resolves to a Cloudflare IP (${domain_ip}) — orange cloud detected."
+            log_warn "WebSocket connections through Cloudflare proxy may timeout."
+            log_warn "Recommended: switch to grey cloud (DNS-only) in Cloudflare dashboard for this record."
+            ;;
+    esac
+
+    # Compare domain IP to server IP
+    [[ "$domain_ip" == "$server_ip" ]] \
+        || die "Domain ${DOMAIN} resolves to ${domain_ip} but server IP is ${server_ip} — update your DNS A-record"
+
+    log_info "Domain ${DOMAIN} resolves to server IP ${server_ip} — OK"
+}
+
+prompt_masquerade_mode() {
+    if [[ -n "${MASQUERADE_MODE:-}" ]]; then
+        case "$MASQUERADE_MODE" in
+            stub|proxy|static) ;;
+            *) die "Invalid masquerade mode '${MASQUERADE_MODE}'. Must be: stub, proxy, or static" ;;
+        esac
+        log_info "Masquerade mode set via CLI flag: ${MASQUERADE_MODE}"
+        return
+    fi
+
+    printf "\n${CYAN}[?]${NC} Choose masquerade mode for the cover site:\n"
+    printf "  1) stub   — Minimal HTML page (\"Under construction\")\n"
+    printf "  2) proxy  — Reverse-proxy an external website (e.g. a blog)\n"
+    printf "  3) static — Serve your own static files from a local folder\n"
+    printf "Choice [1]: "
+    read -r _mode_choice
+
+    case "${_mode_choice:-1}" in
+        1|stub|"")   MASQUERADE_MODE="stub" ;;
+        2|proxy)     MASQUERADE_MODE="proxy" ;;
+        3|static)    MASQUERADE_MODE="static" ;;
+        *) die "Invalid choice: ${_mode_choice}" ;;
+    esac
+
+    if [[ "$MASQUERADE_MODE" == "proxy" ]]; then
+        printf "${CYAN}[?]${NC} Enter URL to proxy (e.g. https://example.blog): "
+        read -r PROXY_URL
+        [[ -n "$PROXY_URL" ]] || die "Proxy URL is required for proxy masquerade mode"
+    fi
+
+    if [[ "$MASQUERADE_MODE" == "static" ]]; then
+        printf "${CYAN}[?]${NC} Enter path to static files directory: "
+        read -r STATIC_PATH
+        [[ -n "$STATIC_PATH" ]] || die "Static path is required for static masquerade mode"
+        [[ -d "$STATIC_PATH" ]] || die "Static path '${STATIC_PATH}' is not a directory or does not exist"
+    fi
+}
+
+detect_listen_port() {
+    if [[ -n "${LISTEN_PORT:-}" ]]; then
+        log_info "Listen port set via CLI flag: ${LISTEN_PORT}"
+        return
+    fi
+
+    if ss -tlnp 2>/dev/null | grep -q ':443 '; then
+        local occupant
+        occupant=$(ss -tlnp 2>/dev/null | grep ':443 ' | grep -oP 'users:\(\(".*?"\)' | head -1 || echo "unknown process")
+        log_warn "Port 443 is in use (${occupant})."
+        log_warn "Alternative ports: 2087, 8443"
+        printf "${CYAN}[?]${NC} Enter listen port [2087]: "
+        read -r LISTEN_PORT
+        LISTEN_PORT="${LISTEN_PORT:-2087}"
+    else
+        LISTEN_PORT=443
+        log_info "Port 443 is available — using 443"
+    fi
+}
+
+server_collect_params() {
+    # Detect non-interactive mode: domain already set before any prompts
+    if [[ -n "${DOMAIN:-}" ]]; then
+        CLI_MODE="true"
+    else
+        CLI_MODE="false"
+    fi
+
+    prompt_domain
+    validate_domain
+    prompt_masquerade_mode
+    detect_listen_port
+
+    # Tunnel type: hardcoded to chisel for Phase 2 (wstunnel added in Phase 6)
+    TUNNEL_TYPE="chisel"
+
+    # Generate secrets
+    SECRET_PATH=$(gen_secret_path)
+    AUTH_USER="proxyebator"
+    AUTH_TOKEN=$(gen_auth_token)
+
+    log_info "Parameters collected successfully"
+}
+
+# ── PRE-INSTALL SUMMARY & DEPENDENCY INSTALLATION ─────────────────────────────
+
+server_show_summary() {
+    # Non-interactive bypass: if all params came from CLI flags, skip confirmation
+    if [[ "${CLI_MODE:-false}" == "true" ]]; then
+        log_info "Non-interactive mode: skipping confirmation"
+        return
+    fi
+
+    printf "\n${BOLD}=== Installation Summary ===${NC}\n"
+    printf "  Domain:       %s\n" "$DOMAIN"
+    printf "  Listen port:  %s\n" "$LISTEN_PORT"
+    printf "  Tunnel:       Chisel (port 7777, bound to 127.0.0.1)\n"
+    printf "  Secret path:  /%s/\n" "$SECRET_PATH"
+    printf "  Masquerade:   %s\n" "$MASQUERADE_MODE"
+    if [[ "${MASQUERADE_MODE:-}" == "proxy" ]]; then
+        printf "  Proxy URL:    %s\n" "${PROXY_URL:-}"
+    fi
+    if [[ "${MASQUERADE_MODE:-}" == "static" ]]; then
+        printf "  Static path:  %s\n" "${STATIC_PATH:-}"
+    fi
+    printf "\n"
+
+    printf "${CYAN}[?]${NC} Continue with installation? [y/N]: "
+    read -r _confirm
+    case "${_confirm:-N}" in
+        y|Y|yes|YES) ;;
+        *) die "Installation aborted by user" ;;
+    esac
+}
+
+server_install_deps() {
+    log_info "Updating package index..."
+    eval "$PKG_UPDATE" || true
+
+    local pkg
+    for pkg in curl openssl nginx; do
+        if command -v "$pkg" &>/dev/null; then
+            log_info "${pkg}: already installed"
+        else
+            log_info "Installing ${pkg}..."
+            eval "$PKG_INSTALL $pkg"
+            log_info "Installed: ${pkg}"
+        fi
+    done
+
+    # certbot: prefer snap, fallback to package manager
+    if command -v certbot &>/dev/null; then
+        log_info "certbot: already installed"
+    else
+        log_info "Installing certbot..."
+        if command -v snap &>/dev/null && snap install --classic certbot 2>/dev/null; then
+            ln -sf /snap/bin/certbot /usr/bin/certbot 2>/dev/null || true
+            log_info "Installed: certbot (via snap)"
+        else
+            eval "$PKG_INSTALL certbot python3-certbot-nginx" || true
+        fi
+        command -v certbot &>/dev/null || die "certbot installation failed — install manually and retry"
+        log_info "Installed: certbot"
+    fi
+
+    # jq: needed for JSON config operations
+    if command -v jq &>/dev/null; then
+        log_info "jq: already installed"
+    else
+        log_info "Installing jq..."
+        eval "$PKG_INSTALL jq"
+        log_info "Installed: jq"
+    fi
+}
+
 # ── MODE STUBS ────────────────────────────────────────────────────────────────
 # Filled in by later phases/plans
 
@@ -150,14 +353,13 @@ server_main() {
     check_root
     detect_os
     detect_arch
-
-    local secret_path auth_token
-    secret_path="$(gen_secret_path)"
-    auth_token="$(gen_auth_token)"
-
-    log_info "Generated secret WS path: /${secret_path}"
-    log_info "Generated auth token:      ${auth_token}"
-    log_warn "Phase 1 skeleton: no packages installed, no services configured yet."
+    server_collect_params
+    server_show_summary
+    server_install_deps
+    # Phase 2 Plan 02+ will add: server_download_chisel, server_setup_auth,
+    # server_configure_nginx, server_obtain_tls, server_create_systemd,
+    # server_configure_firewall, server_save_config, server_verify
+    log_warn "Phase 2 Plan 01 complete: params collected, deps installed. Remaining steps in Plan 02+."
 }
 
 client_main() {

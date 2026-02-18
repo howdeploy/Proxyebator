@@ -668,6 +668,67 @@ server_obtain_tls() {
     log_info "TLS certificate active for ${DOMAIN}"
 }
 
+# ── FIREWALL CONFIGURATION ────────────────────────────────────────────────────
+
+server_configure_firewall() {
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        # ufw is installed AND active --- use ufw
+        ufw allow 80/tcp comment "proxyebator HTTP" 2>/dev/null || true
+        ufw allow "${LISTEN_PORT}/tcp" comment "proxyebator HTTPS" 2>/dev/null || true
+        ufw deny 7777/tcp comment "proxyebator tunnel internal" 2>/dev/null || true
+        log_info "Firewall configured via ufw: 80/tcp ALLOW, ${LISTEN_PORT}/tcp ALLOW, 7777/tcp DENY"
+    elif command -v ufw &>/dev/null; then
+        # ufw installed but NOT active --- log and fall through to iptables
+        # CRITICAL: Never activate ufw here --- enabling it can lock out SSH
+        log_warn "ufw installed but not active --- using iptables instead"
+        # Fall through to iptables
+        iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+        iptables -C INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT
+        # ! -i lo: block external access to tunnel port but allow localhost (nginx→chisel)
+        iptables -C INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport 7777 ! -i lo -j DROP
+        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, 7777 DROP (non-lo)"
+    else
+        # ufw not found --- configure via iptables
+        log_info "ufw not found --- configuring via iptables"
+        iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+        iptables -C INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT
+        # ! -i lo: block external access to tunnel port but allow localhost (nginx→chisel)
+        iptables -C INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport 7777 ! -i lo -j DROP
+        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, 7777 DROP (non-lo)"
+    fi
+}
+
+# ── SERVER CONFIG SAVE ────────────────────────────────────────────────────────
+
+server_save_config() {
+    mkdir -p /etc/proxyebator
+
+    cat > /etc/proxyebator/server.conf << EOF
+# proxyebator server configuration
+# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+DOMAIN=${DOMAIN}
+LISTEN_PORT=${LISTEN_PORT}
+SECRET_PATH=${SECRET_PATH}
+TUNNEL_TYPE=chisel
+TUNNEL_PORT=7777
+MASQUERADE_MODE=${MASQUERADE_MODE}
+AUTH_USER=${AUTH_USER}
+AUTH_TOKEN=${AUTH_TOKEN}
+NGINX_CONF=${NGINX_CONF_PATH}
+CERT_PATH=${CERT_PATH:-/etc/letsencrypt/live/${DOMAIN}/fullchain.pem}
+CERT_KEY_PATH=${CERT_KEY_PATH:-/etc/letsencrypt/live/${DOMAIN}/privkey.pem}
+EOF
+
+    chmod 600 /etc/proxyebator/server.conf
+    log_info "Config saved: /etc/proxyebator/server.conf"
+}
+
 server_main() {
     check_root
     detect_os
@@ -680,8 +741,9 @@ server_main() {
     server_create_systemd
     server_configure_nginx
     server_obtain_tls
-    # Phase 2 Plan 04 will add: server_configure_firewall, server_save_config, server_verify
-    log_warn "Phase 2 Plan 03 complete: nginx + TLS configured. Remaining: firewall, config, verify."
+    server_configure_firewall
+    server_save_config
+    server_verify
 }
 
 client_main() {

@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 1 of 6 (Script Foundation)
-Plan: 1 of ? in current phase
+Plan: 2 of ? in current phase
 Status: In progress
-Last activity: 2026-02-18 — Plan 01-01 complete: proxyebator.sh skeleton created
+Last activity: 2026-02-18 — Plan 01-02 complete: OS detection, arch detection, root check, secret generation
 
-Progress: [█░░░░░░░░░] 5%
+Progress: [██░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 1 min
-- Total execution time: 0.02 hours
+- Total plans completed: 2
+- Average duration: 1.5 min
+- Total execution time: 0.05 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-script-foundation | 1 | 1 min | 1 min |
+| 01-script-foundation | 2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min)
+- Last 5 plans: 01-01 (1 min), 01-02 (2 min)
 - Trend: establishing baseline
 
 *Updated after each plan completion*
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - readonly on color constants: prevents accidental mutation in downstream functions
 - Entry point (CLI parser) at bottom: bash requires functions to be defined before invocation
 - while+case parser: handles long options without external getopt
+- [Phase 01-script-foundation]: Nested _map_os_id() helper in detect_os: same case-dispatch for ID and ID_LIKE without code duplication
+- [Phase 01-script-foundation]: NGINX_CONF_LINK empty string for conf.d distros: Phase 2 uses [[ -n NGINX_CONF_LINK ]] guard before symlinking
+- [Phase 01-script-foundation]: tr -d newline mandatory in gen_auth_token: openssl adds trailing newline making token 33 chars without strip
 
 ### Pending Todos
 
@@ -65,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18T13:38:38Z
-Stopped at: Completed 01-script-foundation / 01-01-PLAN.md — proxyebator.sh skeleton with logging, CLI dispatcher
+Last session: 2026-02-18T13:42:53Z
+Stopped at: Completed 01-script-foundation / 01-02-PLAN.md — OS detection, arch detection, root check, secret generation wired into server_main
 Resume file: None

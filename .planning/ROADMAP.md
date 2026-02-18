@@ -48,7 +48,13 @@ Plans:
   4. `curl https://yourdomain.com/secret-path` returns a WebSocket upgrade response, not a 404
   5. firewall allows 80/443 and blocks the tunnel port from external access
   6. `/etc/proxyebator/server.conf` exists with domain, port, path, tunnel type, and masquerade mode recorded
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Interactive param collection (domain, masquerade, port), pre-install summary, dependency auto-install
+- [ ] 02-02-PLAN.md — Chisel binary download from GitHub, auth file creation, systemd service
+- [ ] 02-03-PLAN.md — nginx configuration with three masquerade modes, TLS via certbot
+- [ ] 02-04-PLAN.md — Firewall (ufw/iptables), config save, post-install verification, connection info
 
 ### Phase 3: Verification Suite
 **Goal**: Every silent failure mode is caught and reported explicitly before the user is told installation succeeded
@@ -102,7 +108,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Script Foundation | 0/2 | Complete    | 2026-02-18 |
-| 2. Server Core | 0/? | Not started | - |
+| 2. Server Core | 0/4 | Planned | - |
 | 3. Verification Suite | 0/? | Not started | - |
 | 4. Client Mode | 0/? | Not started | - |
 | 5. Uninstall and Robustness | 0/? | Not started | - |

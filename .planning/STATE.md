@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 4 - Client Mode
+**Current focus:** Phase 5 - Uninstall and Robustness
 
 ## Current Position
 
-Phase: 4 of 6 (Client Mode)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 4 complete — all client mode functionality implemented
-Last activity: 2026-02-18 — Phase 4 Plan 2 complete (client binary download, SOCKS port check, GUI instructions, foreground tunnel launch, server wss:// URL)
+Phase: 5 of 6 (Uninstall and Robustness)
+Plan: 0 of 2 in current phase (PLANNED)
+Status: Phase 5 planned — 2 plans ready for execution
+Last activity: 2026-02-18 — Phase 5 planned (uninstall command + idempotency guards)
 
-Progress: [███████░░░] 75%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 

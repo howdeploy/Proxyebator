@@ -147,7 +147,17 @@ gen_auth_token() {
 # Filled in by later phases/plans
 
 server_main() {
-    log_info "server_main: not yet implemented"
+    check_root
+    detect_os
+    detect_arch
+
+    local secret_path auth_token
+    secret_path="$(gen_secret_path)"
+    auth_token="$(gen_auth_token)"
+
+    log_info "Generated secret WS path: /${secret_path}"
+    log_info "Generated auth token:      ${auth_token}"
+    log_warn "Phase 1 skeleton: no packages installed, no services configured yet."
 }
 
 client_main() {

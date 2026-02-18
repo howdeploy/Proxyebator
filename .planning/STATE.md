@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 1 - Script Foundation
+**Current focus:** Phase 2 - Server Core
 
 ## Current Position
 
-Phase: 1 of 6 (Script Foundation)
-Plan: 2 of ? in current phase
-Status: In progress
-Last activity: 2026-02-18 — Plan 01-02 complete: OS detection, arch detection, root check, secret generation
+Phase: 2 of 6 (Server Core)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-02-18 — Phase 1 complete (2/2 plans, verification passed)
 
-Progress: [██░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -68,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-18T13:42:53Z
-Stopped at: Completed 01-script-foundation / 01-02-PLAN.md — OS detection, arch detection, root check, secret generation wired into server_main
+Last session: 2026-02-18
+Stopped at: Phase 1 complete, verified, ready to plan Phase 2
 Resume file: None

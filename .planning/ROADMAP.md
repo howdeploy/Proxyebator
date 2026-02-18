@@ -94,7 +94,11 @@ Plans:
   2. After uninstall, re-running `./proxyebator.sh server` installs cleanly from scratch
   3. Re-running `./proxyebator.sh server` on an already-configured server detects existing cert, binary, and service and skips those steps rather than failing or duplicating
   4. Chisel auth credentials are stored in a file with `chmod 600` — they do not appear in `ps aux` output
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Uninstall command: server.conf parsing, reverse-order removal (service, binary, nginx, firewall, config), --yes flag, NGINX_INJECTED tracking
+- [ ] 05-02-PLAN.md — Idempotency guards for server_download_chisel, server_setup_auth, server_create_systemd, server_save_config; re-run config sourcing; TUNNEL-07 verification
 
 ### Phase 6: wstunnel Backend and README
 **Goal**: Users can choose wstunnel as an alternative to Chisel at install time, and any human or AI agent can deploy the full stack by following the README
@@ -119,5 +123,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Server Core | 0/4 | Complete    | 2026-02-18 |
 | 3. Verification Suite | 0/2 | Complete    | 2026-02-18 |
 | 4. Client Mode | 0/2 | Complete    | 2026-02-18 |
-| 5. Uninstall and Robustness | 0/? | Not started | - |
+| 5. Uninstall and Robustness | 0/2 | Not started | - |
 | 6. wstunnel Backend and README | 0/? | Not started | - |

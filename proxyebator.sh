@@ -43,6 +43,13 @@ ${BOLD}OPTIONS${NC}
   --port PORT         Listen port (default: 443)
   --masquerade MODE   Cover site mode: stub | proxy | static (default: stub)
 
+${BOLD}CLIENT OPTIONS${NC}
+  --host HOST         Server hostname
+  --port PORT         Server port (default: 443)
+  --path PATH         Secret tunnel path
+  --pass PASSWORD     Auth password/token
+  --socks-port PORT   Local SOCKS5 port (default: 1080)
+
 ${BOLD}EXAMPLES${NC}
   # Interactive install
   sudo $(basename "$0") server
@@ -50,8 +57,11 @@ ${BOLD}EXAMPLES${NC}
   # Non-interactive install (AI-agent friendly)
   sudo $(basename "$0") server --domain example.com --tunnel chisel
 
-  # Connect client
-  sudo $(basename "$0") client
+  # Connect client (URL mode — copy from server output)
+  $(basename "$0") client wss://proxyebator:TOKEN@example.com:443/SECRET/
+
+  # Connect client (flag mode)
+  $(basename "$0") client --host example.com --port 443 --path /SECRET/ --pass TOKEN
 
   # Uninstall
   sudo $(basename "$0") uninstall
@@ -1010,14 +1020,37 @@ DOMAIN=""
 TUNNEL_TYPE=""
 LISTEN_PORT=""
 MASQUERADE_MODE=""
+CLIENT_HOST=""
+CLIENT_PORT=""
+CLIENT_PATH=""
+CLIENT_PASS=""
+CLIENT_USER=""
+CLIENT_SOCKS_PORT=""
+CLIENT_URL=""
+
+# Capture positional wss:// URL for client mode (before flag parsing)
+if [[ "$MODE" == "client" && $# -gt 0 && "$1" =~ ^(wss|https):// ]]; then
+    CLIENT_URL="$1"
+    shift
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    print_usage; exit 0 ;;
         --domain)     DOMAIN="${2:-}"; shift 2 ;;
         --tunnel)     TUNNEL_TYPE="${2:-}"; shift 2 ;;
-        --port)       LISTEN_PORT="${2:-}"; shift 2 ;;
+        --port)
+            if [[ "$MODE" == "client" ]]; then
+                CLIENT_PORT="${2:-}"
+            else
+                LISTEN_PORT="${2:-}"
+            fi
+            shift 2 ;;
         --masquerade) MASQUERADE_MODE="${2:-}"; shift 2 ;;
+        --host)       CLIENT_HOST="${2:-}"; shift 2 ;;
+        --path)       CLIENT_PATH="${2:-}"; shift 2 ;;
+        --pass)       CLIENT_PASS="${2:-}"; shift 2 ;;
+        --socks-port) CLIENT_SOCKS_PORT="${2:-}"; shift 2 ;;
         *) die "Unknown option: $1" ;;
     esac
 done

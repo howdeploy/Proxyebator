@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 3 - Client Install
+**Current focus:** Phase 3 - Verification Suite
 
 ## Current Position
 
-Phase: 2 of 6 (Server Core) — COMPLETE
-Plan: 4 of 4 in current phase — all plans complete
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-02-18 — Phase 2 Plan 04 complete (firewall, config save, post-install verification, connection info, server_main finalized)
+Phase: 3 of 6 (Verification Suite)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-02-18 — Phase 2 complete (4/4 plans, verification passed)
 
-Progress: [██████░░░░] 58%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 

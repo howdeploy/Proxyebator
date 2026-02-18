@@ -739,6 +739,7 @@ server_configure_nginx() {
 
     if [[ -n "${NGINX_EXISTING_CONF:-}" ]]; then
         # Existing config found --- inject tunnel block, do not replace
+        NGINX_INJECTED="true"
         if grep -q "proxyebator-tunnel-block-start" "$NGINX_EXISTING_CONF" 2>/dev/null; then
             log_info "Tunnel block already present in ${NGINX_EXISTING_CONF} --- skipping injection"
         else
@@ -769,6 +770,7 @@ server_configure_nginx() {
         fi
     else
         # New setup --- write fresh config
+        NGINX_INJECTED="false"
         NGINX_CONF_PATH="${NGINX_CONF_DIR}/proxyebator-${DOMAIN}.conf"
 
         if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
@@ -959,6 +961,7 @@ MASQUERADE_MODE=${MASQUERADE_MODE}
 AUTH_USER=${AUTH_USER}
 AUTH_TOKEN=${AUTH_TOKEN}
 NGINX_CONF=${NGINX_CONF_PATH}
+NGINX_INJECTED=${NGINX_INJECTED:-false}
 CERT_PATH=${CERT_PATH:-/etc/letsencrypt/live/${DOMAIN}/fullchain.pem}
 CERT_KEY_PATH=${CERT_KEY_PATH:-/etc/letsencrypt/live/${DOMAIN}/privkey.pem}
 EOF
@@ -1287,6 +1290,7 @@ CLIENT_PASS=""
 CLIENT_USER=""
 CLIENT_SOCKS_PORT=""
 CLIENT_URL=""
+UNINSTALL_YES=""
 
 # Capture positional wss:// URL for client mode (before flag parsing)
 if [[ "$MODE" == "client" && $# -gt 0 && "$1" =~ ^(wss|https):// ]]; then
@@ -1311,6 +1315,7 @@ while [[ $# -gt 0 ]]; do
         --path)       CLIENT_PATH="${2:-}"; shift 2 ;;
         --pass)       CLIENT_PASS="${2:-}"; shift 2 ;;
         --socks-port) CLIENT_SOCKS_PORT="${2:-}"; shift 2 ;;
+        --yes)        UNINSTALL_YES="true"; shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done

@@ -264,8 +264,12 @@ server_collect_params() {
     prompt_masquerade_mode
     detect_listen_port
 
-    # Tunnel type: hardcoded to chisel for Phase 2 (wstunnel added in Phase 6)
-    TUNNEL_TYPE="chisel"
+    # Tunnel type: validate CLI flag or default to chisel
+    if [[ -z "$TUNNEL_TYPE" ]]; then
+        TUNNEL_TYPE="chisel"
+    elif [[ "$TUNNEL_TYPE" != "chisel" ]]; then
+        die "Tunnel type '${TUNNEL_TYPE}' is not yet supported. Only 'chisel' is available (wstunnel coming in Phase 6)."
+    fi
 
     # Generate secrets
     SECRET_PATH=$(gen_secret_path)

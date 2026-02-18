@@ -198,8 +198,14 @@ client_parse_url() {
 client_collect_interactive() {
     # Non-interactive stdin detection
     if [[ ! -t 0 ]]; then
-        if [[ -z "${CLIENT_HOST:-}" || -z "${CLIENT_PATH:-}" || -z "${CLIENT_PASS:-}" ]]; then
-            die "Non-interactive mode: missing required params. Use: ./proxyebator.sh client --host HOST --path PATH --pass PASS [--port PORT]"
+        if [[ "${TUNNEL_TYPE:-chisel}" == "wstunnel" ]]; then
+            # wstunnel uses path-based auth — no password needed
+            [[ -n "${CLIENT_HOST:-}" && -n "${CLIENT_PATH:-}" ]] \
+                || die "Non-interactive mode: --host and --path required for wstunnel"
+        else
+            if [[ -z "${CLIENT_HOST:-}" || -z "${CLIENT_PATH:-}" || -z "${CLIENT_PASS:-}" ]]; then
+                die "Non-interactive mode: missing required params. Use: ./proxyebator.sh client --host HOST --path PATH --pass PASS [--port PORT]"
+            fi
         fi
     fi
 
@@ -224,10 +230,13 @@ client_collect_interactive() {
         [[ "$CLIENT_PATH" == */ ]] || CLIENT_PATH="${CLIENT_PATH}/"
     fi
 
-    if [[ -z "${CLIENT_PASS:-}" ]]; then
-        printf "${CYAN}[?]${NC} Пароль (токен авторизации): "
-        read -r CLIENT_PASS
-        [[ -n "$CLIENT_PASS" ]] || die "Пароль обязателен"
+    # Only require password for chisel (wstunnel uses path-based auth)
+    if [[ "${TUNNEL_TYPE:-chisel}" != "wstunnel" ]]; then
+        if [[ -z "${CLIENT_PASS:-}" ]]; then
+            printf "${CYAN}[?]${NC} Пароль (токен авторизации): "
+            read -r CLIENT_PASS
+            [[ -n "$CLIENT_PASS" ]] || die "Пароль обязателен"
+        fi
     fi
 
     # Default user to "proxyebator" (server always uses this)
@@ -515,12 +524,18 @@ server_collect_params() {
     prompt_masquerade_mode
     detect_listen_port
 
-    # Tunnel type: validate CLI flag or default to chisel
+    # Tunnel type: prompt interactively, accept CLI flag, or default to chisel
     if [[ -z "$TUNNEL_TYPE" ]]; then
-        TUNNEL_TYPE="chisel"
-    elif [[ "$TUNNEL_TYPE" != "chisel" ]]; then
-        die "Tunnel type '${TUNNEL_TYPE}' is not yet supported. Only 'chisel' is available (wstunnel coming in Phase 6)."
+        if [[ "${CLI_MODE}" == "false" ]]; then
+            printf "${CYAN}[?]${NC} Tunnel backend [chisel/wstunnel] (default: chisel): "
+            read -r TUNNEL_TYPE
+        fi
+        TUNNEL_TYPE="${TUNNEL_TYPE:-chisel}"
     fi
+    case "${TUNNEL_TYPE}" in
+        chisel|wstunnel) ;;
+        *) die "Unknown tunnel type '${TUNNEL_TYPE}'. Use 'chisel' or 'wstunnel'." ;;
+    esac
 
     # Generate secrets
     SECRET_PATH=$(gen_secret_path)
@@ -548,7 +563,11 @@ server_show_summary() {
     printf "\n${BOLD}=== Installation Summary ===${NC}\n"
     printf "  Domain:       %s\n" "$DOMAIN"
     printf "  Listen port:  %s\n" "$LISTEN_PORT"
-    printf "  Tunnel:       Chisel (port 7777, bound to 127.0.0.1)\n"
+    if [[ "${TUNNEL_TYPE}" == "wstunnel" ]]; then
+        printf "  Tunnel:       wstunnel (port 7778, bound to 127.0.0.1)\n"
+    else
+        printf "  Tunnel:       Chisel (port 7777, bound to 127.0.0.1)\n"
+    fi
     printf "  Secret path:  /%s/\n" "$SECRET_PATH"
     printf "  Masquerade:   %s\n" "$MASQUERADE_MODE"
     if [[ "${MASQUERADE_MODE:-}" == "proxy" ]]; then
@@ -643,6 +662,43 @@ server_download_chisel() {
     log_info "Chisel installed: $(/usr/local/bin/chisel --version 2>&1 | head -1)"
 }
 
+server_download_wstunnel() {
+    if [[ -x /usr/local/bin/wstunnel ]]; then
+        log_info "wstunnel already installed: $(/usr/local/bin/wstunnel --version 2>&1 | head -1)"
+        return
+    fi
+
+    rm -f /tmp/wstunnel.tar.gz /tmp/wstunnel 2>/dev/null || true
+
+    local WSTUNNEL_FALLBACK_VER="v10.5.2"
+    local WSTUNNEL_VER
+    WSTUNNEL_VER=$(curl -sf --max-time 10 \
+        "https://api.github.com/repos/erebe/wstunnel/releases/latest" \
+        | grep -o '"tag_name": "[^"]*"' | grep -o 'v[0-9.]*') \
+        || WSTUNNEL_VER=""
+
+    if [[ -z "$WSTUNNEL_VER" ]]; then
+        log_warn "Could not fetch latest wstunnel version — using fallback ${WSTUNNEL_FALLBACK_VER}"
+        WSTUNNEL_VER="$WSTUNNEL_FALLBACK_VER"
+    fi
+
+    # wstunnel uses .tar.gz (NOT .gz like chisel) — must use tar, not gunzip
+    local download_url="https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VER}/wstunnel_${WSTUNNEL_VER#v}_linux_${ARCH}.tar.gz"
+    log_info "Downloading wstunnel ${WSTUNNEL_VER} for ${ARCH} from GitHub..."
+
+    curl -fLo /tmp/wstunnel.tar.gz "$download_url" \
+        || die "Failed to download wstunnel from $download_url"
+    tar -xzf /tmp/wstunnel.tar.gz -C /tmp/ wstunnel \
+        || die "Failed to extract wstunnel binary from tarball"
+    rm -f /tmp/wstunnel.tar.gz
+    chmod +x /tmp/wstunnel
+    mv /tmp/wstunnel /usr/local/bin/wstunnel
+
+    /usr/local/bin/wstunnel --version \
+        || die "wstunnel binary not working after install"
+    log_info "wstunnel installed: $(/usr/local/bin/wstunnel --version 2>&1 | head -1)"
+}
+
 server_setup_auth() {
     if [[ -f /etc/chisel/auth.json ]]; then
         log_info "Auth file already exists at /etc/chisel/auth.json — skipping generation"
@@ -709,6 +765,37 @@ UNIT
     log_info "Chisel systemd service: $(systemctl is-active proxyebator 2>/dev/null || echo 'unknown')"
 }
 
+server_create_systemd_wstunnel() {
+    if systemctl is-active --quiet proxyebator 2>/dev/null; then
+        log_info "proxyebator.service is already active — skipping service creation"
+        return
+    fi
+
+    # wstunnel server: no auth flags needed — nginx location block IS the auth gate
+    # wstunnel binds to 127.0.0.1 only — unreachable from outside
+    # DO NOT use --restrict-http-upgrade-path-prefix: nginx trailing-slash proxy_pass
+    # strips the path before forwarding, causing wstunnel to reject all connections
+    cat > /etc/systemd/system/proxyebator.service << 'UNIT'
+[Unit]
+Description=wstunnel Server (proxyebator)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/wstunnel server ws://127.0.0.1:7778
+Restart=always
+RestartSec=5
+User=nobody
+Group=nogroup
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    systemctl daemon-reload
+    systemctl enable --now proxyebator || die "Failed to start proxyebator.service"
+    log_info "wstunnel systemd service: $(systemctl is-active proxyebator 2>/dev/null || echo 'unknown')"
+}
+
 # ── NGINX CONFIGURATION ───────────────────────────────────────────────────────
 
 detect_existing_nginx() {
@@ -764,7 +851,7 @@ generate_tunnel_location_block() {
     cat << TUNNEL_BLOCK
     # proxyebator-tunnel-block-start
     location /${SECRET_PATH}/ {
-        proxy_pass http://127.0.0.1:7777/;
+        proxy_pass http://127.0.0.1:${TUNNEL_PORT:-7777}/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -961,8 +1048,8 @@ server_configure_firewall() {
         # ufw is installed AND active --- use ufw
         ufw allow 80/tcp comment "proxyebator HTTP" 2>/dev/null || true
         ufw allow "${LISTEN_PORT}/tcp" comment "proxyebator HTTPS" 2>/dev/null || true
-        ufw deny 7777/tcp comment "proxyebator tunnel internal" 2>/dev/null || true
-        log_info "Firewall configured via ufw: 80/tcp ALLOW, ${LISTEN_PORT}/tcp ALLOW, 7777/tcp DENY"
+        ufw deny "${TUNNEL_PORT}/tcp" comment "proxyebator tunnel internal" 2>/dev/null || true
+        log_info "Firewall configured via ufw: 80/tcp ALLOW, ${LISTEN_PORT}/tcp ALLOW, ${TUNNEL_PORT}/tcp DENY"
     elif command -v ufw &>/dev/null; then
         # ufw installed but NOT active --- log and fall through to iptables
         # CRITICAL: Never activate ufw here --- enabling it can lock out SSH
@@ -972,10 +1059,10 @@ server_configure_firewall() {
             || iptables -A INPUT -p tcp --dport 80 -j ACCEPT
         iptables -C INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT 2>/dev/null \
             || iptables -A INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT
-        # ! -i lo: block external access to tunnel port but allow localhost (nginx→chisel)
-        iptables -C INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null \
-            || iptables -A INPUT -p tcp --dport 7777 ! -i lo -j DROP
-        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, 7777 DROP (non-lo)"
+        # ! -i lo: block external access to tunnel port but allow localhost (nginx→tunnel)
+        iptables -C INPUT -p tcp --dport "${TUNNEL_PORT}" ! -i lo -j DROP 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport "${TUNNEL_PORT}" ! -i lo -j DROP
+        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, ${TUNNEL_PORT} DROP (non-lo)"
     else
         # ufw not found --- configure via iptables
         log_info "ufw not found --- configuring via iptables"
@@ -983,10 +1070,10 @@ server_configure_firewall() {
             || iptables -A INPUT -p tcp --dport 80 -j ACCEPT
         iptables -C INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT 2>/dev/null \
             || iptables -A INPUT -p tcp --dport "${LISTEN_PORT}" -j ACCEPT
-        # ! -i lo: block external access to tunnel port but allow localhost (nginx→chisel)
-        iptables -C INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null \
-            || iptables -A INPUT -p tcp --dport 7777 ! -i lo -j DROP
-        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, 7777 DROP (non-lo)"
+        # ! -i lo: block external access to tunnel port but allow localhost (nginx→tunnel)
+        iptables -C INPUT -p tcp --dport "${TUNNEL_PORT}" ! -i lo -j DROP 2>/dev/null \
+            || iptables -A INPUT -p tcp --dport "${TUNNEL_PORT}" ! -i lo -j DROP
+        log_info "Firewall configured via iptables: 80 ALLOW, ${LISTEN_PORT} ALLOW, ${TUNNEL_PORT} DROP (non-lo)"
     fi
 }
 
@@ -1006,8 +1093,8 @@ server_save_config() {
 DOMAIN=${DOMAIN}
 LISTEN_PORT=${LISTEN_PORT}
 SECRET_PATH=${SECRET_PATH}
-TUNNEL_TYPE=chisel
-TUNNEL_PORT=7777
+TUNNEL_TYPE=${TUNNEL_TYPE}
+TUNNEL_PORT=${TUNNEL_PORT}
 MASQUERADE_MODE=${MASQUERADE_MODE}
 AUTH_USER=${AUTH_USER}
 AUTH_TOKEN=${AUTH_TOKEN}
@@ -1026,22 +1113,37 @@ EOF
 server_print_connection_info() {
     printf "\n${BOLD}=== Connection Information ===${NC}\n"
     printf "${GREEN}Server setup complete!${NC}\n\n"
-    printf "  ${BOLD}Client command:${NC}\n"
-    printf "  ${CYAN}chisel client \\\\${NC}\n"
-    printf "  ${CYAN}  --auth \"%s:%s\" \\\\${NC}\n" "${AUTH_USER}" "${AUTH_TOKEN}"
-    printf "  ${CYAN}  --keepalive 25s \\\\${NC}\n"
-    printf "  ${CYAN}  https://%s:%s/%s/ \\\\${NC}\n" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
-    printf "  ${CYAN}  socks${NC}\n"
-    printf "\n"
-    printf "  ${BOLD}Команда для клиентской машины:${NC}\n"
-    printf "  ${CYAN}./proxyebator.sh client wss://%s:%s@%s:%s/%s/${NC}\n" \
-        "${AUTH_USER}" "${AUTH_TOKEN}" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+
+    if [[ "${TUNNEL_TYPE:-chisel}" == "wstunnel" ]]; then
+        printf "  ${BOLD}Client command (wstunnel):${NC}\n"
+        printf "  ${CYAN}wstunnel client \\\\${NC}\n"
+        printf "  ${CYAN}  -L socks5://127.0.0.1:1080 \\\\${NC}\n"
+        printf "  ${CYAN}  --connection-min-idle 5 \\\\${NC}\n"
+        printf "  ${CYAN}  wss://%s:%s/%s/${NC}\n" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+        printf "\n"
+        printf "  ${BOLD}Команда для клиентской машины:${NC}\n"
+        printf "  ${CYAN}./proxyebator.sh client --host %s --port %s --path /%s/ --tunnel wstunnel${NC}\n" \
+            "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+    else
+        printf "  ${BOLD}Client command:${NC}\n"
+        printf "  ${CYAN}chisel client \\\\${NC}\n"
+        printf "  ${CYAN}  --auth \"%s:%s\" \\\\${NC}\n" "${AUTH_USER}" "${AUTH_TOKEN}"
+        printf "  ${CYAN}  --keepalive 25s \\\\${NC}\n"
+        printf "  ${CYAN}  https://%s:%s/%s/ \\\\${NC}\n" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+        printf "  ${CYAN}  socks${NC}\n"
+        printf "\n"
+        printf "  ${BOLD}Команда для клиентской машины:${NC}\n"
+        printf "  ${CYAN}./proxyebator.sh client wss://%s:%s@%s:%s/%s/${NC}\n" \
+            "${AUTH_USER}" "${AUTH_TOKEN}" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+        printf "\n"
+        printf "  ${YELLOW}Note: Use 'socks' (not 'R:socks') --- 'socks' means traffic exits via server.${NC}\n"
+    fi
+
     printf "\n"
     printf "  ${BOLD}SOCKS5 proxy will be available at:${NC} 127.0.0.1:1080\n"
     printf "\n"
     printf "  ${BOLD}Server config file:${NC} /etc/proxyebator/server.conf\n"
     printf "\n"
-    printf "  ${YELLOW}Note: Use 'socks' (not 'R:socks') --- 'socks' means traffic exits via server.${NC}\n"
     printf "  ${YELLOW}Note: The trailing slash in the URL is required.${NC}\n"
 }
 
@@ -1258,11 +1360,26 @@ server_main() {
     detect_os
     detect_arch
     server_collect_params
+
+    # Set TUNNEL_PORT based on backend type
+    if [[ "${TUNNEL_TYPE}" == "wstunnel" ]]; then
+        TUNNEL_PORT=7778
+    else
+        TUNNEL_PORT=7777
+    fi
+
     server_show_summary
     server_install_deps
-    server_download_chisel
-    server_setup_auth
-    server_create_systemd
+
+    if [[ "${TUNNEL_TYPE}" == "wstunnel" ]]; then
+        server_download_wstunnel
+        server_create_systemd_wstunnel
+    else
+        server_download_chisel
+        server_setup_auth
+        server_create_systemd
+    fi
+
     server_configure_nginx
     server_obtain_tls
     server_configure_firewall
@@ -1270,6 +1387,80 @@ server_main() {
     verify_main
     local verify_exit=$?
     exit $verify_exit
+}
+
+client_download_wstunnel() {
+    local install_dir
+
+    if command -v wstunnel &>/dev/null; then
+        log_info "wstunnel already installed: $(wstunnel --version 2>&1 | head -1)"
+        WSTUNNEL_BIN="$(command -v wstunnel)"
+        return
+    fi
+
+    if [[ -w "/usr/local/bin" ]]; then
+        install_dir="/usr/local/bin"
+    else
+        install_dir="${HOME}/.local/bin"
+        mkdir -p "$install_dir"
+        case ":${PATH}:" in
+            *":${install_dir}:"*) ;;
+            *) log_warn "${install_dir} is not in PATH — add: export PATH=\"\$PATH:${install_dir}\"" ;;
+        esac
+    fi
+
+    local WSTUNNEL_FALLBACK_VER="v10.5.2"
+    local WSTUNNEL_VER
+    WSTUNNEL_VER=$(curl -sf --max-time 10 \
+        "https://api.github.com/repos/erebe/wstunnel/releases/latest" \
+        | grep -o '"tag_name": "[^"]*"' | grep -o 'v[0-9.]*') \
+        || WSTUNNEL_VER=""
+
+    if [[ -z "$WSTUNNEL_VER" ]]; then
+        log_warn "GitHub API unavailable — using fallback version ${WSTUNNEL_FALLBACK_VER}"
+        WSTUNNEL_VER="$WSTUNNEL_FALLBACK_VER"
+    fi
+
+    # wstunnel uses "linux" and "darwin" in asset names (same as our CLIENT_OS)
+    local download_url="https://github.com/erebe/wstunnel/releases/download/${WSTUNNEL_VER}/wstunnel_${WSTUNNEL_VER#v}_${CLIENT_OS}_${ARCH}.tar.gz"
+    log_info "Downloading wstunnel ${WSTUNNEL_VER} for ${CLIENT_OS}/${ARCH}..."
+
+    curl -fLo /tmp/wstunnel_client.tar.gz "$download_url" \
+        || die "Failed to download wstunnel from ${download_url}"
+    tar -xzf /tmp/wstunnel_client.tar.gz -C /tmp/ wstunnel \
+        || die "Failed to extract wstunnel binary from tarball"
+    rm -f /tmp/wstunnel_client.tar.gz
+    chmod +x /tmp/wstunnel
+
+    if [[ "${CLIENT_OS}" == "darwin" ]]; then
+        xattr -d com.apple.quarantine /tmp/wstunnel 2>/dev/null || true
+        log_info "macOS: quarantine attribute removed from binary"
+    fi
+
+    mv /tmp/wstunnel "${install_dir}/wstunnel"
+
+    "${install_dir}/wstunnel" --version \
+        || die "wstunnel binary not working after install"
+    log_info "wstunnel installed at ${install_dir}/wstunnel: $("${install_dir}/wstunnel" --version 2>&1 | head -1)"
+
+    WSTUNNEL_BIN="${install_dir}/wstunnel"
+}
+
+client_run_wstunnel() {
+    # wstunnel SOCKS5 is client-side: -L socks5://127.0.0.1:PORT
+    # Server is just a WebSocket relay, no server-side auth needed
+    local wstunnel_url="wss://${CLIENT_HOST}:${CLIENT_PORT}${CLIENT_PATH}"
+
+    client_print_gui_instructions
+
+    log_info "Запуск wstunnel клиента... (Ctrl+C для остановки)"
+    printf "\n"
+
+    local wstunnel_bin="${WSTUNNEL_BIN:-wstunnel}"
+    exec "${wstunnel_bin}" client \
+        -L "socks5://127.0.0.1:${SOCKS_PORT}" \
+        --connection-min-idle 5 \
+        "${wstunnel_url}"
 }
 
 client_run() {
@@ -1303,10 +1494,22 @@ client_main() {
     detect_arch
     detect_client_os
     client_collect_params
-    client_download_chisel
+
+    # Determine tunnel type for client
+    local CLIENT_TUNNEL_TYPE="${TUNNEL_TYPE:-chisel}"
+
+    if [[ "${CLIENT_TUNNEL_TYPE}" == "wstunnel" ]]; then
+        client_download_wstunnel
+    else
+        client_download_chisel
+    fi
     client_check_socks_port
-    client_run
-    # Note: client_run() uses exec — this line never executes
+    if [[ "${CLIENT_TUNNEL_TYPE}" == "wstunnel" ]]; then
+        client_run_wstunnel
+    else
+        client_run
+    fi
+    # Note: client_run/client_run_wstunnel use exec — this line never executes
 }
 
 # ── UNINSTALL SUB-FUNCTIONS ───────────────────────────────────────────────────
@@ -1317,11 +1520,15 @@ _uninstall_confirm() {
     fi
 
     printf "\n${YELLOW}The following will be removed:${NC}\n"
-    printf "  ${CYAN}Chisel binary:${NC}    /usr/local/bin/chisel\n"
-    printf "  ${CYAN}Auth file:${NC}        /etc/chisel/auth.json\n"
+    if [[ "${TUNNEL_TYPE:-chisel}" == "wstunnel" ]]; then
+        printf "  ${CYAN}wstunnel binary:${NC}  /usr/local/bin/wstunnel\n"
+    else
+        printf "  ${CYAN}Chisel binary:${NC}    /usr/local/bin/chisel\n"
+        printf "  ${CYAN}Auth file:${NC}        /etc/chisel/auth.json\n"
+    fi
     printf "  ${CYAN}Systemd service:${NC}  /etc/systemd/system/proxyebator.service\n"
     printf "  ${CYAN}Nginx config:${NC}     %s\n" "${NGINX_CONF:-unknown}"
-    printf "  ${CYAN}Firewall rules:${NC}   80/tcp ALLOW, %s/tcp ALLOW, 7777/tcp DENY\n" "${LISTEN_PORT:-443}"
+    printf "  ${CYAN}Firewall rules:${NC}   80/tcp ALLOW, %s/tcp ALLOW, %s/tcp DENY\n" "${LISTEN_PORT:-443}" "${TUNNEL_PORT:-7777}"
     printf "  ${CYAN}Config dir:${NC}       /etc/proxyebator/\n"
     printf "\n${YELLOW}TLS certificate will NOT be removed (Let's Encrypt rate limits).${NC}\n"
     printf "\n"
@@ -1352,17 +1559,26 @@ _uninstall_service() {
 }
 
 _uninstall_binary() {
-    if [[ -f /usr/local/bin/chisel ]]; then
-        rm -f /usr/local/bin/chisel
-        log_info "Removed /usr/local/bin/chisel"
+    if [[ "${TUNNEL_TYPE:-chisel}" == "wstunnel" ]]; then
+        if [[ -f /usr/local/bin/wstunnel ]]; then
+            rm -f /usr/local/bin/wstunnel
+            log_info "Removed /usr/local/bin/wstunnel"
+        else
+            log_info "wstunnel binary: not found, skipping"
+        fi
     else
-        log_info "Chisel binary: not found, skipping"
+        if [[ -f /usr/local/bin/chisel ]]; then
+            rm -f /usr/local/bin/chisel
+            log_info "Removed /usr/local/bin/chisel"
+        else
+            log_info "Chisel binary: not found, skipping"
+        fi
+        if [[ -f /etc/chisel/auth.json ]]; then
+            rm -f /etc/chisel/auth.json
+            log_info "Removed /etc/chisel/auth.json"
+        fi
+        rmdir /etc/chisel 2>/dev/null || true
     fi
-    if [[ -f /etc/chisel/auth.json ]]; then
-        rm -f /etc/chisel/auth.json
-        log_info "Removed /etc/chisel/auth.json"
-    fi
-    rmdir /etc/chisel 2>/dev/null || true
 }
 
 _uninstall_nginx() {
@@ -1406,12 +1622,12 @@ _uninstall_firewall() {
     if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
         ufw delete allow 80/tcp 2>/dev/null || true
         ufw delete allow "${LISTEN_PORT:-443}/tcp" 2>/dev/null || true
-        ufw delete deny 7777/tcp 2>/dev/null || true
+        ufw delete deny "${TUNNEL_PORT:-7777}/tcp" 2>/dev/null || true
         log_info "Firewall rules removed via ufw"
     else
         iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
         iptables -D INPUT -p tcp --dport "${LISTEN_PORT:-443}" -j ACCEPT 2>/dev/null || true
-        iptables -D INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null || true
+        iptables -D INPUT -p tcp --dport "${TUNNEL_PORT:-7777}" ! -i lo -j DROP 2>/dev/null || true
         log_info "Firewall rules removed via iptables"
     fi
 }

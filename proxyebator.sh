@@ -590,6 +590,14 @@ server_install_deps() {
 # ── CHISEL DOWNLOAD AND AUTH SETUP ────────────────────────────────────────────
 
 server_download_chisel() {
+    if [[ -x /usr/local/bin/chisel ]]; then
+        log_info "Chisel already installed: $(/usr/local/bin/chisel --version 2>&1 | head -1)"
+        return
+    fi
+
+    # Clean up stale temp files from a previous failed download
+    rm -f /tmp/chisel.gz /tmp/chisel 2>/dev/null || true
+
     local CHISEL_FALLBACK_VER="v1.11.3"
     local CHISEL_VER
     CHISEL_VER=$(curl -sf --max-time 10 \
@@ -616,6 +624,11 @@ server_download_chisel() {
 }
 
 server_setup_auth() {
+    if [[ -f /etc/chisel/auth.json ]]; then
+        log_info "Auth file already exists at /etc/chisel/auth.json — skipping generation"
+        return
+    fi
+
     mkdir -p /etc/chisel
     mkdir -p /etc/proxyebator
 
@@ -635,6 +648,16 @@ EOF
 # ── SYSTEMD SERVICE CREATION ───────────────────────────────────────────────────
 
 server_create_systemd() {
+    if systemctl is-active --quiet proxyebator 2>/dev/null; then
+        log_info "proxyebator.service is already active — skipping service creation"
+        return
+    fi
+
+    # TUNNEL-07 compliance: credentials are passed via --authfile, NOT --auth.
+    # This ensures AUTH_TOKEN never appears in /proc/PID/cmdline or ps aux output.
+    # The auth file /etc/chisel/auth.json is chmod 600, owned by nobody:nogroup.
+    # Verification: ps aux | grep chisel shows --authfile path, not credentials.
+
     # Write systemd unit file
     # CRITICAL: --host and -p are SEPARATE flags (combined form ignored by Chisel)
     # CRITICAL: --authfile not --auth (credentials not exposed in ps aux)
@@ -950,6 +973,11 @@ server_configure_firewall() {
 # ── SERVER CONFIG SAVE ────────────────────────────────────────────────────────
 
 server_save_config() {
+    if [[ -f /etc/proxyebator/server.conf ]]; then
+        log_info "Config already exists at /etc/proxyebator/server.conf — skipping"
+        return
+    fi
+
     mkdir -p /etc/proxyebator
 
     cat > /etc/proxyebator/server.conf << EOF

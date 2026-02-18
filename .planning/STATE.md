@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 3 of 6 (Verification Suite)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-02-18 — Phase 2 complete (4/4 plans, verification passed)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-18 — Phase 3 Plan 1 complete (verify_main 7-check suite)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 1.4 min
-- Total execution time: 0.12 hours
+- Total plans completed: 6
+- Average duration: 1.5 min
+- Total execution time: 0.14 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [███░░░░░░░] 33%
 |-------|-------|-------|----------|
 | 01-script-foundation | 2 | 3 min | 1.5 min |
 | 02-server-core | 4 | 6 min | 1.5 min |
+| 03-verification-suite | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2 min), 02-01 (2 min), 02-02 (1 min), 02-03 (1 min), 02-04 (2 min)
+- Last 5 plans: 02-01 (2 min), 02-02 (1 min), 02-03 (1 min), 02-04 (2 min), 03-01 (2 min)
 - Trend: stable at ~1-2 min/plan
 
 *Updated after each plan completion*
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 02-server-core plan 04]: iptables -C idempotency: check-before-add (-C || -A) prevents duplicate rules on script re-run
 - [Phase 02-server-core plan 04]: ! -i lo on 7777 DROP rule: nginx proxies to 127.0.0.1:7777 via loopback; only external access blocked
 - [Phase 02-server-core plan 04]: WebSocket path accepts 404/200/101: plain HTTP GET returns 404 without upgrade headers — normal and acceptable
+- [Phase 03-verification-suite plan 01]: check_fail does NOT increment fail_count — callers do it inline; required for tls_ok/fw_ok/dns_ok ok-flag pattern (one increment per logical check)
+- [Phase 03-verification-suite plan 01]: ok-flag pattern: local foo_ok=true; sub-conditions set false on failure; [[ $foo_ok == false ]] && fail_count++ at end — enables exactly 7 fail_count increments in code matching 7 logical checks
+- [Phase 03-verification-suite plan 01]: WebSocket check accepts 101/200/400 (not 404) — with proper upgrade headers, 404 means nginx routing failure, 400 means nginx proxied but Chisel rejected; 404 is now a FAIL
 
 ### Pending Todos
 
@@ -87,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-server-core 02-04-PLAN.md (Phase 2 complete)
+Stopped at: Completed 03-verification-suite 03-01-PLAN.md (verify_main 7-check suite)
 Resume file: None

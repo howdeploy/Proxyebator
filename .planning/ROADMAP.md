@@ -64,7 +64,11 @@ Plans:
   1. After server install, the script prints PASS/FAIL for each check: systemd active, port binding, nginx cover site, WebSocket upgrade
   2. If the tunnel port is bound to 0.0.0.0 instead of 127.0.0.1, the script prints a FAIL and exits non-zero before printing "installation complete"
   3. After all checks pass, the script prints a complete connection block: host, port, secret path, auth token, and a copy-paste client command
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Build verify_main() with 7 checks (systemd, port, firewall, cover site, WebSocket, TLS, DNS), helpers, summary banner
+- [ ] 03-02-PLAN.md — Wire verify into CLI dispatcher, replace server_verify in server_main, remove old function
 
 ### Phase 4: Client Mode
 **Goal**: Users can run `./proxyebator.sh client` on Linux, macOS, or Windows (WSL) and get a working SOCKS5 proxy on localhost:1080
@@ -109,7 +113,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Script Foundation | 0/2 | Complete    | 2026-02-18 |
 | 2. Server Core | 0/4 | Complete    | 2026-02-18 |
-| 3. Verification Suite | 0/? | Not started | - |
+| 3. Verification Suite | 0/2 | Planning complete | - |
 | 4. Client Mode | 0/? | Not started | - |
 | 5. Uninstall and Robustness | 0/? | Not started | - |
 | 6. wstunnel Backend and README | 0/? | Not started | - |

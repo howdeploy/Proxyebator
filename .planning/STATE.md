@@ -5,33 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 2 - Server Core
+**Current focus:** Phase 3 - Client Install
 
 ## Current Position
 
-Phase: 2 of 6 (Server Core)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-02-18 — Phase 2 Plan 03 complete (nginx reverse proxy, WebSocket tunnel, masquerade modes, TLS via certbot)
+Phase: 2 of 6 (Server Core) — COMPLETE
+Plan: 4 of 4 in current phase — all plans complete
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-02-18 — Phase 2 Plan 04 complete (firewall, config save, post-install verification, connection info, server_main finalized)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 1.3 min
-- Total execution time: 0.09 hours
+- Total plans completed: 5
+- Average duration: 1.4 min
+- Total execution time: 0.12 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-script-foundation | 2 | 3 min | 1.5 min |
-| 02-server-core | 3 | 4 min | 1.3 min |
+| 02-server-core | 4 | 6 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min), 01-02 (2 min), 02-01 (2 min), 02-02 (1 min), 02-03 (1 min)
+- Last 5 plans: 01-02 (2 min), 02-01 (2 min), 02-02 (1 min), 02-03 (1 min), 02-04 (2 min)
 - Trend: stable at ~1-2 min/plan
 
 *Updated after each plan completion*
@@ -69,6 +69,11 @@ Recent decisions affecting current work:
 - [Phase 02-server-core]: Two-pass nginx: HTTP-only first for ACME, full SSL overwrite after cert obtained
 - [Phase 02-server-core]: certbot certonly --nginx not bare --nginx: certonly never modifies nginx config
 - [Phase 02-server-core]: MASK-06 removed by design: nginx always used, all three masquerade modes go through nginx
+- [Phase 02-server-core plan 04]: ufw active-only guard: only use ufw if Status: active — ufw installed but inactive falls through to iptables
+- [Phase 02-server-core plan 04]: Never run ufw enable: activating ufw without pre-configured rules can lock out SSH if default policy is DROP
+- [Phase 02-server-core plan 04]: iptables -C idempotency: check-before-add (-C || -A) prevents duplicate rules on script re-run
+- [Phase 02-server-core plan 04]: ! -i lo on 7777 DROP rule: nginx proxies to 127.0.0.1:7777 via loopback; only external access blocked
+- [Phase 02-server-core plan 04]: WebSocket path accepts 404/200/101: plain HTTP GET returns 404 without upgrade headers — normal and acceptable
 
 ### Pending Todos
 
@@ -82,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-server-core 02-03-PLAN.md
+Stopped at: Completed 02-server-core 02-04-PLAN.md (Phase 2 complete)
 Resume file: None

@@ -95,50 +95,50 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCRIPT-01 | — | Pending |
-| SCRIPT-02 | — | Pending |
-| SCRIPT-03 | — | Pending |
-| SCRIPT-04 | — | Pending |
-| SCRIPT-05 | — | Pending |
-| SCRIPT-06 | — | Pending |
-| TUNNEL-01 | — | Pending |
-| TUNNEL-02 | — | Pending |
-| TUNNEL-03 | — | Pending |
-| TUNNEL-04 | — | Pending |
-| TUNNEL-05 | — | Pending |
-| TUNNEL-06 | — | Pending |
-| TUNNEL-07 | — | Pending |
-| MASK-01 | — | Pending |
-| MASK-02 | — | Pending |
-| MASK-03 | — | Pending |
-| MASK-04 | — | Pending |
-| MASK-05 | — | Pending |
-| MASK-06 | — | Pending |
-| SRV-01 | — | Pending |
-| SRV-02 | — | Pending |
-| SRV-03 | — | Pending |
-| SRV-04 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
-| CLI-04 | — | Pending |
-| VER-01 | — | Pending |
-| VER-02 | — | Pending |
-| VER-03 | — | Pending |
-| DEL-01 | — | Pending |
-| DEL-02 | — | Pending |
-| DOC-01 | — | Pending |
-| DOC-02 | — | Pending |
-| DOC-03 | — | Pending |
-| DOC-04 | — | Pending |
-| DOC-05 | — | Pending |
-| DOC-06 | — | Pending |
+| SCRIPT-01 | Phase 1 | Pending |
+| SCRIPT-02 | Phase 1 | Pending |
+| SCRIPT-03 | Phase 1 | Pending |
+| SCRIPT-04 | Phase 5 | Pending |
+| SCRIPT-05 | Phase 1 | Pending |
+| SCRIPT-06 | Phase 2 | Pending |
+| TUNNEL-01 | Phase 2 | Pending |
+| TUNNEL-02 | Phase 2 | Pending |
+| TUNNEL-03 | Phase 2 | Pending |
+| TUNNEL-04 | Phase 6 | Pending |
+| TUNNEL-05 | Phase 2 | Pending |
+| TUNNEL-06 | Phase 2 | Pending |
+| TUNNEL-07 | Phase 5 | Pending |
+| MASK-01 | Phase 2 | Pending |
+| MASK-02 | Phase 2 | Pending |
+| MASK-03 | Phase 2 | Pending |
+| MASK-04 | Phase 2 | Pending |
+| MASK-05 | Phase 2 | Pending |
+| MASK-06 | Phase 2 | Pending |
+| SRV-01 | Phase 2 | Pending |
+| SRV-02 | Phase 2 | Pending |
+| SRV-03 | Phase 2 | Pending |
+| SRV-04 | Phase 2 | Pending |
+| CLI-01 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Pending |
+| CLI-04 | Phase 4 | Pending |
+| VER-01 | Phase 3 | Pending |
+| VER-02 | Phase 3 | Pending |
+| VER-03 | Phase 3 | Pending |
+| DEL-01 | Phase 5 | Pending |
+| DEL-02 | Phase 5 | Pending |
+| DOC-01 | Phase 6 | Pending |
+| DOC-02 | Phase 6 | Pending |
+| DOC-03 | Phase 6 | Pending |
+| DOC-04 | Phase 6 | Pending |
+| DOC-05 | Phase 6 | Pending |
+| DOC-06 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 38 total
-- Mapped to phases: 0
-- Unmapped: 38 ⚠️
+- Mapped to phases: 38
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-18*
-*Last updated: 2026-02-18 after initial definition*
+*Last updated: 2026-02-18 after roadmap creation — all 38 requirements mapped*

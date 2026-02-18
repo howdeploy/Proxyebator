@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 2 of 6 (Server Core)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-18 — Phase 2 Plan 02 complete (Chisel binary download, auth file, systemd service)
+Last activity: 2026-02-18 — Phase 2 Plan 03 complete (nginx reverse proxy, WebSocket tunnel, masquerade modes, TLS via certbot)
 
-Progress: [████░░░░░░] 37%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 1.3 min
-- Total execution time: 0.07 hours
+- Total execution time: 0.09 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-script-foundation | 2 | 3 min | 1.5 min |
-| 02-server-core | 2 | 3 min | 1.5 min |
+| 02-server-core | 3 | 4 min | 1.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min), 01-02 (2 min), 02-01 (2 min), 02-02 (1 min)
+- Last 5 plans: 01-01 (1 min), 01-02 (2 min), 02-01 (2 min), 02-02 (1 min), 02-03 (1 min)
 - Trend: stable at ~1-2 min/plan
 
 *Updated after each plan completion*
@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - [Phase 02-server-core plan 02]: --authfile over CLI --auth: credentials stay out of ps aux and /proc/*/cmdline
 - [Phase 02-server-core plan 02]: User=nobody not DynamicUser=yes: DynamicUser rotates UID on restart, breaks authfile ownership
 - [Phase 02-server-core plan 02]: --reverse omitted from Chisel ExecStart: SOCKS5 doesn't need it, reduces attack surface
+- [Phase 02-server-core]: Two-pass nginx: HTTP-only first for ACME, full SSL overwrite after cert obtained
+- [Phase 02-server-core]: certbot certonly --nginx not bare --nginx: certonly never modifies nginx config
+- [Phase 02-server-core]: MASK-06 removed by design: nginx always used, all three masquerade modes go through nginx
 
 ### Pending Todos
 
@@ -79,5 +82,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-server-core 02-02-PLAN.md
+Stopped at: Completed 02-server-core 02-03-PLAN.md
 Resume file: None

@@ -489,6 +489,20 @@ detect_listen_port() {
 }
 
 server_collect_params() {
+    # Re-run detection: if server.conf already exists, source it to preserve
+    # existing secrets (SECRET_PATH, AUTH_TOKEN) and parameters.
+    # This prevents generating new credentials that would mismatch the
+    # running auth.json and the existing nginx tunnel block.
+    if [[ -f /etc/proxyebator/server.conf ]]; then
+        log_info "Existing installation detected — loading saved configuration"
+        # shellcheck disable=SC1091
+        source /etc/proxyebator/server.conf
+        # Set variables that server.conf uses different names for
+        NGINX_CONF_PATH="${NGINX_CONF:-}"
+        log_info "Re-run mode: domain=${DOMAIN:-} port=${LISTEN_PORT:-} tunnel=${TUNNEL_TYPE:-}"
+        return
+    fi
+
     # Detect non-interactive mode: domain already set before any prompts
     if [[ -n "${DOMAIN:-}" ]]; then
         CLI_MODE="true"
@@ -522,6 +536,12 @@ server_show_summary() {
     # Non-interactive bypass: if all params came from CLI flags, skip confirmation
     if [[ "${CLI_MODE:-false}" == "true" ]]; then
         log_info "Non-interactive mode: skipping confirmation"
+        return
+    fi
+
+    # Re-run mode: skip confirmation if config already exists
+    if [[ -f /etc/proxyebator/server.conf ]]; then
+        log_info "Re-run mode: skipping installation summary"
         return
     fi
 

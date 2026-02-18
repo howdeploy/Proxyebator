@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 5 of 6 (Uninstall and Robustness)
-Plan: 0 of 2 in current phase (PLANNED)
-Status: Phase 5 planned — 2 plans ready for execution
-Last activity: 2026-02-18 — Phase 5 planned (uninstall command + idempotency guards)
+Plan: 1 of 2 in current phase (IN PROGRESS)
+Status: Phase 5 plan 01 complete — uninstall command implemented
+Last activity: 2026-02-18 — 05-01 complete (uninstall command with 6 sub-functions, --yes flag, NGINX_INJECTED)
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 1.6 min
-- Total execution time: 0.21 hours
+- Total plans completed: 9
+- Average duration: 1.7 min
+- Total execution time: 0.24 hours
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: [████████░░] 80%
 | 02-server-core | 4 | 6 min | 1.5 min |
 | 03-verification-suite | 2 | 4 min | 2 min |
 | 04-client-mode | 2 | 4 min | 2 min |
+| 05-uninstall-and-robustness | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (2 min), 03-02 (2 min), 04-01 (2 min), 04-02 (2 min)
+- Last 5 plans: 03-02 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (2 min)
 - Trend: stable at ~2 min/plan
 
 *Updated after each plan completion*
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 04-client-mode plan 02]: exec in client_run() replaces shell with chisel: foreground-only mode; no background process, no PID file; Ctrl+C sends SIGINT directly to chisel
 - [Phase 04-client-mode plan 02]: wss:// -> https:// conversion done at exec time in client_run(): user-facing URLs keep wss:// for clarity; chisel gets canonical https:// scheme
 - [Phase 04-client-mode plan 02]: client_print_gui_instructions() called before exec: setup instructions visible even if chisel exits immediately after launch
+- [Phase 05-uninstall-and-robustness]: NGINX_INJECTED written to server.conf during install: enables uninstall to decide between sed-remove-block vs full file delete
+- [Phase 05-uninstall-and-robustness]: rmdir not rm -rf for /etc/chisel and /etc/proxyebator: preserves user files, only removes dir if empty
+- [Phase 05-uninstall-and-robustness]: TLS cert explicitly NOT removed: Let's Encrypt rate limits make cert deletion a manual post-uninstall step
 
 ### Pending Todos
 
@@ -103,5 +107,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 04-client-mode 04-02-PLAN.md (client binary download, port check, GUI instructions, foreground tunnel launch — Phase 4 complete)
+Stopped at: Completed 05-uninstall-and-robustness 05-01-PLAN.md (uninstall command with 6 sub-functions, --yes flag, NGINX_INJECTED flag — 1 of 2 Phase 5 plans done)
 Resume file: None

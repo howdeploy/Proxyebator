@@ -79,7 +79,11 @@ Plans:
   2. After connecting, `curl --socks5-hostname localhost:1080 https://ifconfig.me` returns the server's external IP (not the client's)
   3. Client mode works on Linux, macOS, and Windows via WSL without code changes
   4. After connection, the script prints SOCKS5 address (`127.0.0.1:1080`) and per-client GUI setup instructions (Throne, Proxifier, nekoray)
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — CLI parser extension, URL/flag/interactive parameter collection, client OS detection
+- [ ] 04-02-PLAN.md — Binary download, SOCKS5 port check, foreground chisel launch, GUI instructions, server wss:// URL
 
 ### Phase 5: Uninstall and Robustness
 **Goal**: Users can cleanly remove all installed components and re-run the install script on an already-configured server without breakage
@@ -114,6 +118,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Script Foundation | 0/2 | Complete    | 2026-02-18 |
 | 2. Server Core | 0/4 | Complete    | 2026-02-18 |
 | 3. Verification Suite | 0/2 | Complete    | 2026-02-18 |
-| 4. Client Mode | 0/? | Not started | - |
+| 4. Client Mode | 0/2 | Planned     | - |
 | 5. Uninstall and Robustness | 0/? | Not started | - |
 | 6. wstunnel Backend and README | 0/? | Not started | - |

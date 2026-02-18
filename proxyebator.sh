@@ -34,6 +34,7 @@ ${BOLD}COMMANDS${NC}
   server      Install and configure proxy server (nginx + Chisel/wstunnel + TLS)
   client      Install tunnel client binary and configure SOCKS5
   uninstall   Remove all installed components
+  verify      Run 7-check verification suite (reads /etc/proxyebator/server.conf)
 
 ${BOLD}OPTIONS${NC}
   --help, -h          Show this help
@@ -753,61 +754,212 @@ server_print_connection_info() {
     printf "  ${YELLOW}Note: The trailing slash in the URL is required.${NC}\n"
 }
 
-server_verify() {
-    local all_ok=true
+# ── VERIFICATION HELPERS ──────────────────────────────────────────────────────
+# check_fail does NOT increment fail_count — callers do that inline.
+# This is required for TLS check 6's tls_ok sub-condition logic:
+# TLS has multiple sub-failures but must only increment fail_count ONCE at the end.
 
-    printf "\n${BOLD}=== Post-Install Verification ===${NC}\n"
+check_pass() {
+    printf "${GREEN}[PASS]${NC} %s\n" "$1"
+}
 
-    # Check 1: proxyebator.service active (SRV-01)
+check_fail() {
+    printf "${RED}[FAIL]${NC} %s\n" "$1" >&2
+}
+
+# ── VERIFICATION MAIN ─────────────────────────────────────────────────────────
+
+verify_main() {
+    check_root
+
+    [[ -f /etc/proxyebator/server.conf ]] \
+        || die "server.conf not found --- run: sudo ./proxyebator.sh server"
+    # shellcheck disable=SC1091
+    source /etc/proxyebator/server.conf
+
+    local fail_count=0
+    local total_checks=7
+
+    printf "\n${BOLD}=== Verification Suite ===${NC}\n"
+
+    # ── Check 1: systemd service active ───────────────────────────────────────
     if systemctl is-active --quiet proxyebator 2>/dev/null; then
-        log_info "[PASS] proxyebator.service is active"
+        check_pass "proxyebator.service is active"
     else
-        log_warn "[FAIL] proxyebator.service is NOT active"
-        systemctl status proxyebator --no-pager >&2 2>/dev/null || true
-        all_ok=false
+        check_fail "proxyebator.service is NOT active"
+        systemctl status proxyebator --no-pager --lines=5 >&2 2>/dev/null || true
+        printf "  Try: systemctl restart proxyebator\n" >&2
+        fail_count=$(( fail_count + 1 ))
     fi
 
-    # Check 2: Tunnel port bound to 127.0.0.1 only (SRV-04)
-    if ss -tlnp 2>/dev/null | grep ':7777 ' | grep -q '127.0.0.1'; then
-        log_info "[PASS] Tunnel port 7777 bound to 127.0.0.1"
+    # ── Check 2: Tunnel port bound to 127.0.0.1 ───────────────────────────────
+    if ss -tlnp 2>/dev/null | grep ":${TUNNEL_PORT} " | grep -q '127\.0\.0\.1'; then
+        check_pass "Tunnel port ${TUNNEL_PORT} bound to 127.0.0.1"
     else
-        log_warn "[FAIL] Tunnel port 7777 NOT bound to 127.0.0.1 --- SECURITY RISK"
-        ss -tlnp 2>/dev/null | grep ':7777 ' >&2 || true
-        all_ok=false
+        check_fail "Tunnel port ${TUNNEL_PORT} NOT bound to 127.0.0.1 — SECURITY RISK"
+        ss -tlnp 2>/dev/null | grep ":${TUNNEL_PORT} " >&2 || true
+        printf "  Try: systemctl restart proxyebator\n" >&2
+        fail_count=$(( fail_count + 1 ))
     fi
 
-    # Check 3: Decoy site returns HTTP 200
+    # ── Check 3: Firewall blocks tunnel port ──────────────────────────────────
+    # ONE fail_count increment — fw_ok flag aggregates ufw and iptables paths
+    local fw_ok=true
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        if ufw status 2>/dev/null | grep "${TUNNEL_PORT}" | grep -qi "DENY"; then
+            check_pass "Firewall: port ${TUNNEL_PORT} DENY rule exists (ufw)"
+        else
+            check_fail "Firewall: no DENY rule for port ${TUNNEL_PORT} in ufw"
+            ufw status 2>/dev/null >&2 || true
+            printf "  Try: ufw deny %s/tcp\n" "${TUNNEL_PORT}" >&2
+            fw_ok=false
+        fi
+    else
+        if iptables -L INPUT -n 2>/dev/null | grep -q "dpt:${TUNNEL_PORT}"; then
+            check_pass "Firewall: port ${TUNNEL_PORT} DROP rule exists (iptables)"
+        else
+            check_fail "Firewall: no DROP rule for port ${TUNNEL_PORT} in iptables"
+            iptables -L INPUT -n 2>/dev/null | head -20 >&2 || true
+            printf "  Try: iptables -A INPUT -p tcp --dport %s ! -i lo -j DROP\n" "${TUNNEL_PORT}" >&2
+            fw_ok=false
+        fi
+    fi
+    [[ "$fw_ok" == "false" ]] && fail_count=$(( fail_count + 1 ))
+
+    # ── Check 4: Cover site returns HTTP 200 ──────────────────────────────────
     local http_code
-    http_code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "https://${DOMAIN}/" 2>/dev/null || echo "000")
+    http_code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" \
+        "https://${DOMAIN}/" 2>/dev/null) || http_code="000"
     if [[ "$http_code" == "200" ]]; then
-        log_info "[PASS] Cover site https://${DOMAIN}/ returns HTTP 200"
+        check_pass "Cover site https://${DOMAIN}/ returns HTTP 200"
     else
-        log_warn "[FAIL] Cover site returned HTTP $http_code (expected 200)"
-        all_ok=false
+        check_fail "Cover site returned HTTP ${http_code} (expected 200)"
+        curl -sk --max-time 10 -v "https://${DOMAIN}/" >/dev/null 2>&1 | head -20 >&2 || true
+        printf "  Try: nginx -t && systemctl reload nginx\n" >&2
+        fail_count=$(( fail_count + 1 ))
     fi
 
-    # Check 4: WebSocket path reachable (404/200/101 all acceptable)
-    # 404 is normal without WebSocket upgrade headers; 101 means upgrade succeeded
+    # ── Check 5: WebSocket path reachable (VER-02) ────────────────────────────
+    # Accept 101 (upgrade ok), 200 (chisel responds), 400 (chisel rejected — proxied OK)
+    # Fail on 404 (path not routed) and 000 (connection refused)
     local ws_code
-    ws_code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" \
-        "https://${DOMAIN}:${LISTEN_PORT}/${SECRET_PATH}/" 2>/dev/null || echo "000")
-    if [[ "$ws_code" == "404" || "$ws_code" == "200" || "$ws_code" == "101" ]]; then
-        log_info "[PASS] WebSocket path /${SECRET_PATH}/ is reachable (HTTP $ws_code)"
+    ws_code=$(curl -sk --max-time 10 \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+        -H "Sec-WebSocket-Version: 13" \
+        -o /dev/null -w "%{http_code}" \
+        "https://${DOMAIN}:${LISTEN_PORT}/${SECRET_PATH}/" 2>/dev/null) || ws_code="000"
+    if [[ "$ws_code" == "101" || "$ws_code" == "200" || "$ws_code" == "400" ]]; then
+        check_pass "WebSocket path /${SECRET_PATH}/ reachable (HTTP ${ws_code})"
     else
-        log_warn "[FAIL] WebSocket path returned HTTP $ws_code"
-        all_ok=false
+        check_fail "WebSocket path returned HTTP ${ws_code} (expected 101/200/400)"
+        printf "  Check nginx tunnel block for /%s/\n" "${SECRET_PATH}" >&2
+        printf "  Try: nginx -t && systemctl reload nginx\n" >&2
+        fail_count=$(( fail_count + 1 ))
     fi
 
-    # Summary banner
-    if [[ "$all_ok" == "true" ]]; then
-        printf "\n${GREEN}${BOLD}All checks passed.${NC}\n"
+    # ── Check 6: TLS certificate validity + chain + renewal timer ─────────────
+    # ONE fail_count increment max — tls_ok flag aggregates all sub-conditions
+    local tls_ok=true
+
+    if [[ ! -f "${CERT_PATH}" ]]; then
+        check_fail "TLS cert file not found: ${CERT_PATH}"
+        printf "  Try: certbot certonly --nginx -d %s\n" "${DOMAIN}" >&2
+        tls_ok=false
     else
-        printf "\n${YELLOW}${BOLD}Some checks failed — review warnings above.${NC}\n"
-        printf "${YELLOW}Connection info is still provided below for manual debugging.${NC}\n"
+        # checkend semantics: exit 0 = cert valid for 30+ days (PASS); exit 1 = expires soon (FAIL)
+        if openssl x509 -noout -checkend 2592000 -in "${CERT_PATH}" 2>/dev/null; then
+            local expiry
+            expiry=$(openssl x509 -noout -enddate -in "${CERT_PATH}" 2>/dev/null | cut -d= -f2) || expiry="unknown"
+            # Check chain of trust against system CA bundle
+            local ca_bundle=""
+            for f in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+                [[ -f "$f" ]] && { ca_bundle="$f"; break; }
+            done
+            if [[ -n "$ca_bundle" ]] && ! openssl verify -CAfile "$ca_bundle" "${CERT_PATH}" &>/dev/null; then
+                check_fail "TLS cert chain of trust invalid (expires: ${expiry})"
+                printf "  Try: certbot certonly --nginx -d %s --force-renewal\n" "${DOMAIN}" >&2
+                tls_ok=false
+            else
+                # Check renewal timer (handles both certbot.timer and snap.certbot.renew.timer)
+                if systemctl list-units --type=timer 2>/dev/null | grep -qE "certbot\.timer|snap\.certbot\.renew"; then
+                    check_pass "TLS cert valid (expires: ${expiry}), renewal timer active"
+                else
+                    check_fail "TLS cert valid (expires: ${expiry}) but renewal timer missing"
+                    printf "  Try: systemctl enable --now certbot.timer\n" >&2
+                    printf "  Or:  systemctl enable --now snap.certbot.renew.timer\n" >&2
+                    tls_ok=false
+                fi
+            fi
+        else
+            local expiry
+            expiry=$(openssl x509 -noout -enddate -in "${CERT_PATH}" 2>/dev/null | cut -d= -f2) || expiry="unknown"
+            check_fail "TLS cert expires within 30 days: ${expiry}"
+            printf "  Try: certbot renew\n" >&2
+            tls_ok=false
+        fi
     fi
 
-    # Always print connection info (partial success is still useful)
-    server_print_connection_info
+    [[ "$tls_ok" == "false" ]] && fail_count=$(( fail_count + 1 ))
+
+    # ── Check 7: DNS resolves to server IP ────────────────────────────────────
+    # ONE fail_count increment — dns_ok flag aggregates all DNS sub-conditions
+    local dns_ok=true
+    local server_ip domain_ip dns_resp first_octet
+    server_ip=""
+    domain_ip=""
+    dns_resp=""
+    first_octet=""
+
+    server_ip=$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null) \
+        || server_ip=$(curl -sf --max-time 5 https://ifconfig.me 2>/dev/null) \
+        || server_ip=""
+
+    if [[ -z "$server_ip" ]]; then
+        check_fail "Could not determine server public IP — check internet connectivity"
+        dns_ok=false
+    else
+        dns_resp=$(curl -sf --max-time 10 \
+            "https://dns.google/resolve?name=${DOMAIN}&type=A" 2>/dev/null) || dns_resp=""
+        domain_ip=$(printf '%s' "$dns_resp" \
+            | grep -oP '"data"\s*:\s*"\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1) || domain_ip=""
+
+        if [[ -z "$domain_ip" ]]; then
+            check_fail "DNS: could not resolve ${DOMAIN} — check DNS A-record"
+            dns_ok=false
+        elif [[ "$domain_ip" != "$server_ip" ]]; then
+            first_octet=$(printf '%s' "$domain_ip" | cut -d. -f1)
+            case "$first_octet" in
+                103|104|108|141|162|172|173|188|190|197|198)
+                    check_fail "DNS: ${DOMAIN} resolves to Cloudflare IP ${domain_ip} (orange cloud)"
+                    printf "  Switch to grey cloud (DNS-only) in Cloudflare dashboard\n" >&2
+                    ;;
+                *)
+                    check_fail "DNS: ${DOMAIN} resolves to ${domain_ip}, expected ${server_ip}"
+                    printf "  Update DNS A-record for %s to point to %s\n" "${DOMAIN}" "${server_ip}" >&2
+                    ;;
+            esac
+            dns_ok=false
+        else
+            check_pass "DNS: ${DOMAIN} resolves to ${server_ip} (correct)"
+        fi
+    fi
+    [[ "$dns_ok" == "false" ]] && fail_count=$(( fail_count + 1 ))
+
+    # ── Summary banner ────────────────────────────────────────────────────────
+    local pass_count
+    pass_count=$(( total_checks - fail_count ))
+    if [[ $fail_count -eq 0 ]]; then
+        printf "\n${GREEN}${BOLD}=== ALL CHECKS PASSED (%d/%d) ===${NC}\n" \
+            "$pass_count" "$total_checks"
+        server_print_connection_info
+        return 0
+    else
+        printf "\n${RED}${BOLD}=== %d CHECK(S) FAILED (%d/%d passed) ===${NC}\n" \
+            "$fail_count" "$pass_count" "$total_checks" >&2
+        return 1
+    fi
 }
 
 server_main() {
@@ -824,7 +976,9 @@ server_main() {
     server_obtain_tls
     server_configure_firewall
     server_save_config
-    server_verify
+    verify_main
+    local verify_exit=$?
+    exit $verify_exit
 }
 
 client_main() {
@@ -846,7 +1000,7 @@ fi
 
 # Extract positional mode (first arg)
 case "$1" in
-    server|client|uninstall) MODE="$1"; shift ;;
+    server|client|uninstall|verify) MODE="$1"; shift ;;
     --help|-h) print_usage; exit 0 ;;
     *) print_usage; die "Unknown command: $1" ;;
 esac
@@ -873,4 +1027,5 @@ case "$MODE" in
     server)    server_main ;;
     client)    client_main ;;
     uninstall) uninstall_main ;;
+    verify)    check_root; verify_main; exit $? ;;
 esac

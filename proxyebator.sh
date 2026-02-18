@@ -57,6 +57,92 @@ ${BOLD}EXAMPLES${NC}
 EOF
 }
 
+# ── ROOT CHECK ────────────────────────────────────────────────────────────────
+check_root() {
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        die "This script must be run as root. Use: sudo $(basename "$0") $*"
+    fi
+}
+
+# ── OS DETECTION ──────────────────────────────────────────────────────────────
+detect_os() {
+    [[ -f /etc/os-release ]] || die "Cannot detect OS: /etc/os-release not found"
+    # shellcheck disable=SC1091
+    source /etc/os-release
+
+    _map_os_id() {
+        case "$1" in
+            debian|ubuntu|raspbian)
+                PKG_UPDATE="apt-get update -qq"
+                PKG_INSTALL="apt-get install -y -qq"
+                NGINX_CONF_DIR="/etc/nginx/sites-available"
+                NGINX_CONF_LINK="/etc/nginx/sites-enabled"
+                ;;
+            centos|rhel|almalinux|rocky)
+                PKG_UPDATE="dnf check-update || true"
+                PKG_INSTALL="dnf install -y"
+                NGINX_CONF_DIR="/etc/nginx/conf.d"
+                NGINX_CONF_LINK=""
+                ;;
+            fedora)
+                PKG_UPDATE="dnf check-update || true"
+                PKG_INSTALL="dnf install -y"
+                NGINX_CONF_DIR="/etc/nginx/conf.d"
+                NGINX_CONF_LINK=""
+                ;;
+            arch|manjaro)
+                PKG_UPDATE="pacman -Sy --noconfirm"
+                PKG_INSTALL="pacman -S --needed --noconfirm"
+                NGINX_CONF_DIR="/etc/nginx/sites-available"
+                NGINX_CONF_LINK="/etc/nginx/sites-enabled"
+                ;;
+            *) return 1 ;;
+        esac
+        return 0
+    }
+
+    OS="$ID"
+    if ! _map_os_id "$ID"; then
+        # Fallback: check ID_LIKE for derivative distros (Mint, Pop!_OS, etc.)
+        local like_id
+        like_id=$(printf '%s' "${ID_LIKE:-}" | awk '{print $1}')
+        OS="$like_id"
+        if ! _map_os_id "$like_id"; then
+            die "Unsupported OS: ${PRETTY_NAME:-$ID}. Supported: Debian, Ubuntu, CentOS, Fedora, Arch"
+        fi
+    fi
+
+    log_info "Detected OS: ${PRETTY_NAME:-$ID} | Package manager: $(printf '%s' "$PKG_INSTALL" | awk '{print $1}')"
+}
+
+# ── ARCHITECTURE DETECTION ────────────────────────────────────────────────────
+detect_arch() {
+    local machine
+    machine="$(uname -m)"
+    case "$machine" in
+        x86_64|amd64)  ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        armv7l|armv6l) ARCH="arm"   ;;
+        *)
+            die "Unsupported architecture: $machine. Supported: amd64 (x86_64), arm64 (aarch64)"
+            ;;
+    esac
+    log_info "Detected architecture: $ARCH"
+}
+
+# ── SECRET GENERATION ─────────────────────────────────────────────────────────
+gen_secret_path() {
+    # 32 hex chars = 128 bits entropy
+    # openssl rand -hex 16 produces exactly 32 hex characters
+    openssl rand -hex 16
+}
+
+gen_auth_token() {
+    # openssl rand -base64 24 = 24 bytes → 32 base64 chars
+    # tr -d '\n' removes trailing newline (pitfall #5 — always strip newline)
+    openssl rand -base64 24 | tr -d '\n'
+}
+
 # ── MODE STUBS ────────────────────────────────────────────────────────────────
 # Filled in by later phases/plans
 

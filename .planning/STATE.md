@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 4 of 6 (Client Mode)
-Plan: 1 of 2 in current phase (COMPLETE)
-Status: Plan 1 complete — ready for Plan 2 (client_download_chisel, client_run)
-Last activity: 2026-02-18 — Phase 4 Plan 1 complete (client param collection: URL parsing, CLI flags, interactive prompts, OS detection)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 4 complete — all client mode functionality implemented
+Last activity: 2026-02-18 — Phase 4 Plan 2 complete (client binary download, SOCKS port check, GUI instructions, foreground tunnel launch, server wss:// URL)
 
-Progress: [██████░░░░] 62%
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
@@ -30,10 +30,10 @@ Progress: [██████░░░░] 62%
 | 01-script-foundation | 2 | 3 min | 1.5 min |
 | 02-server-core | 4 | 6 min | 1.5 min |
 | 03-verification-suite | 2 | 4 min | 2 min |
-| 04-client-mode | 1 | 2 min | 2 min |
+| 04-client-mode | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-04 (2 min), 03-01 (2 min), 03-02 (2 min), 04-01 (2 min)
+- Last 5 plans: 03-01 (2 min), 03-02 (2 min), 04-01 (2 min), 04-02 (2 min)
 - Trend: stable at ~2 min/plan
 
 *Updated after each plan completion*
@@ -86,6 +86,10 @@ Recent decisions affecting current work:
 - [Phase 04-client-mode plan 01]: Non-interactive stdin check ([[ ! -t 0 ]]) in client_collect_interactive: prevents read hanging in pipes/CI
 - [Phase 04-client-mode plan 01]: CLIENT_USER always defaults to proxyebator: server hardcodes AUTH_USER=proxyebator; client doesn't need to ask for username
 - [Phase 04-client-mode plan 01]: client_main() has no check_root(): client mode runs without sudo; binary installs to user-writable path (Plan 02)
+- [Phase 04-client-mode plan 02]: CHISEL_BIN global set in client_download_chisel(), used in client_run(): avoids PATH issues when installing to ~/.local/bin — full path used regardless of PATH contents
+- [Phase 04-client-mode plan 02]: exec in client_run() replaces shell with chisel: foreground-only mode; no background process, no PID file; Ctrl+C sends SIGINT directly to chisel
+- [Phase 04-client-mode plan 02]: wss:// -> https:// conversion done at exec time in client_run(): user-facing URLs keep wss:// for clarity; chisel gets canonical https:// scheme
+- [Phase 04-client-mode plan 02]: client_print_gui_instructions() called before exec: setup instructions visible even if chisel exits immediately after launch
 
 ### Pending Todos
 
@@ -99,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 04-client-mode 04-01-PLAN.md (client param collection: URL parsing, CLI flags, interactive prompts, OS detection)
+Stopped at: Completed 04-client-mode 04-02-PLAN.md (client binary download, port check, GUI instructions, foreground tunnel launch — Phase 4 complete)
 Resume file: None

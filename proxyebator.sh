@@ -979,6 +979,10 @@ server_print_connection_info() {
     printf "  ${CYAN}  https://%s:%s/%s/ \\\\${NC}\n" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
     printf "  ${CYAN}  socks${NC}\n"
     printf "\n"
+    printf "  ${BOLD}Команда для клиентской машины:${NC}\n"
+    printf "  ${CYAN}./proxyebator.sh client wss://%s:%s@%s:%s/%s/${NC}\n" \
+        "${AUTH_USER}" "${AUTH_TOKEN}" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+    printf "\n"
     printf "  ${BOLD}SOCKS5 proxy will be available at:${NC} 127.0.0.1:1080\n"
     printf "\n"
     printf "  ${BOLD}Server config file:${NC} /etc/proxyebator/server.conf\n"
@@ -1214,12 +1218,41 @@ server_main() {
     exit $verify_exit
 }
 
+client_run() {
+    # Convert wss:// scheme to https:// for chisel (chisel expects https://)
+    local chisel_url="https://${CLIENT_HOST}:${CLIENT_PORT}${CLIENT_PATH}"
+
+    # Build SOCKS tunnel argument
+    local socks_arg
+    if [[ "${SOCKS_PORT}" == "1080" ]]; then
+        socks_arg="socks"
+    else
+        socks_arg="${SOCKS_PORT}:socks"
+    fi
+
+    # Print GUI instructions before launching (user sees them even if chisel crashes)
+    client_print_gui_instructions
+
+    log_info "Запуск Chisel клиента... (Ctrl+C для остановки)"
+    printf "\n"
+
+    # Exec chisel in foreground — replaces shell process; Ctrl+C sends SIGINT to chisel
+    local chisel_bin="${CHISEL_BIN:-chisel}"
+    exec "${chisel_bin}" client \
+        --auth "${CLIENT_USER}:${CLIENT_PASS}" \
+        --keepalive 25s \
+        "${chisel_url}" \
+        "${socks_arg}"
+}
+
 client_main() {
     detect_arch
     detect_client_os
     client_collect_params
-    # Phase 4 Plan 02 adds: client_download_chisel, client_check_socks_port, client_run
-    log_info "Parameters collected. Binary download and connection not yet implemented."
+    client_download_chisel
+    client_check_socks_port
+    client_run
+    # Note: client_run() uses exec — this line never executes
 }
 
 uninstall_main() {

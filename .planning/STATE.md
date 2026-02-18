@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 5 of 6 (Uninstall and Robustness) COMPLETE
+Phase: 6 of 6 (wstunnel Backend and README) COMPLETE
 Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 5 complete — uninstall command + server idempotency guards implemented
-Last activity: 2026-02-18 — 05-02 complete (4 idempotency guards, server_collect_params re-run detection, TUNNEL-07 compliance comment)
+Status: Phase 6 complete — wstunnel backend + comprehensive Russian README — PROJECT COMPLETE
+Last activity: 2026-02-18 — 06-02 complete (447-line Russian README, all DOC-01 through DOC-06 requirements satisfied)
 
-Progress: [█████████▓] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -32,9 +32,10 @@ Progress: [█████████▓] 92%
 | 03-verification-suite | 2 | 4 min | 2 min |
 | 04-client-mode | 2 | 4 min | 2 min |
 | 05-uninstall-and-robustness | 2 | 3 min | 1.5 min |
+| 06-wstunnel-backend-and-readme | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (2 min), 05-02 (1 min)
+- Last 5 plans: 05-01 (2 min), 05-02 (1 min), 06-01 (2 min), 06-02 (2 min)
 - Trend: stable at ~2 min/plan
 
 *Updated after each plan completion*
@@ -97,6 +98,12 @@ Recent decisions affecting current work:
 - [Phase 05]: is-active (not is-enabled) for systemd idempotency: enabled-but-stopped service gets recreated
 - [Phase 05]: -x (executable) check for chisel binary: ensures binary is functional, not just present
 - [Phase 05]: server_collect_params sources existing server.conf to preserve AUTH_TOKEN and SECRET_PATH on re-run
+- [Phase 06-01]: wstunnel systemd unit binds to ws://127.0.0.1:7778 — no --restrict-http-upgrade-path-prefix (nginx strips path with trailing-slash proxy_pass)
+- [Phase 06-01]: wstunnel uses .tar.gz archives (not .gz like chisel) — extraction uses tar -xzf
+- [Phase 06-01]: TUNNEL_PORT variable abstraction: all shared functions use TUNNEL_PORT rather than hardcoded 7777/7778
+- [Phase 06-02]: Throne documented as primary recommended client; nekoray/nekobox documented with explicit archive notice (ARCHIVED since early 2025)
+- [Phase 06-02]: TUN routing loop prevention rules prominently documented in Throne section — critical silent failure mode
+- [Phase 06-02]: AI-assistant block as fenced code block (not blockquote) for trivial copy-paste to any LLM
 
 ### Pending Todos
 
@@ -104,11 +111,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Research] wstunnel current flag names (v10+ API) should be verified against live GitHub README before Phase 6 implementation
-- [Research] nekobox/nekoray may have been renamed or reorganized; verify current repo URLs before writing README
+None — all research blockers resolved in Phase 6 implementation.
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 05-uninstall-and-robustness 05-02-PLAN.md (server idempotency guards + re-run detection — Phase 5 complete, 2 of 2 plans done)
+Stopped at: Completed 06-wstunnel-backend-and-readme 06-02-PLAN.md (README.md created — Phase 6 complete, 2 of 2 plans done — PROJECT COMPLETE)
 Resume file: None

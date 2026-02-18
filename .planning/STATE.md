@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 3 - Verification Suite
+**Current focus:** Phase 4 - Client Mode
 
 ## Current Position
 
-Phase: 3 of 6 (Verification Suite)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase complete — ready for Phase 4
-Last activity: 2026-02-18 — Phase 3 Plan 2 complete (CLI wiring, server_main update, server_verify removal)
+Phase: 4 of 6 (Client Mode)
+Plan: 1 of 2 in current phase (COMPLETE)
+Status: Plan 1 complete — ready for Plan 2 (client_download_chisel, client_run)
+Last activity: 2026-02-18 — Phase 4 Plan 1 complete (client param collection: URL parsing, CLI flags, interactive prompts, OS detection)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 62%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 1.6 min
-- Total execution time: 0.19 hours
+- Total execution time: 0.21 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [█████░░░░░] 50%
 | 01-script-foundation | 2 | 3 min | 1.5 min |
 | 02-server-core | 4 | 6 min | 1.5 min |
 | 03-verification-suite | 2 | 4 min | 2 min |
+| 04-client-mode | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (1 min), 02-03 (1 min), 02-04 (2 min), 03-01 (2 min), 03-02 (2 min)
-- Trend: stable at ~1-2 min/plan
+- Last 5 plans: 02-04 (2 min), 03-01 (2 min), 03-02 (2 min), 04-01 (2 min)
+- Trend: stable at ~2 min/plan
 
 *Updated after each plan completion*
 
@@ -80,6 +81,11 @@ Recent decisions affecting current work:
 - [Phase 03-verification-suite plan 01]: WebSocket check accepts 101/200/400 (not 404) — with proper upgrade headers, 404 means nginx routing failure, 400 means nginx proxied but Chisel rejected; 404 is now a FAIL
 - [Phase 03-verification-suite]: Both case statements updated for verify: mode extraction case and dispatch case
 - [Phase 03-verification-suite]: server_verify() fully deleted (not commented out): dead code removal is final
+- [Phase 04-client-mode plan 01]: Pure-bash string manipulation for URL parsing (not sed -E): ${var#*://} strips scheme, bash 3.2+ compatible for macOS
+- [Phase 04-client-mode plan 01]: Mode-aware --port flag: client mode sets CLIENT_PORT, server mode sets LISTEN_PORT — single flag, context-sensitive behavior
+- [Phase 04-client-mode plan 01]: Non-interactive stdin check ([[ ! -t 0 ]]) in client_collect_interactive: prevents read hanging in pipes/CI
+- [Phase 04-client-mode plan 01]: CLIENT_USER always defaults to proxyebator: server hardcodes AUTH_USER=proxyebator; client doesn't need to ask for username
+- [Phase 04-client-mode plan 01]: client_main() has no check_root(): client mode runs without sudo; binary installs to user-writable path (Plan 02)
 
 ### Pending Todos
 
@@ -93,5 +99,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 03-verification-suite 03-02-PLAN.md (CLI wiring, server_main update, server_verify removal) — Phase 3 complete
+Stopped at: Completed 04-client-mode 04-01-PLAN.md (client param collection: URL parsing, CLI flags, interactive prompts, OS detection)
 Resume file: None

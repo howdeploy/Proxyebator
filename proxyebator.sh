@@ -729,6 +729,83 @@ EOF
     log_info "Config saved: /etc/proxyebator/server.conf"
 }
 
+# ── POST-INSTALL VERIFICATION ─────────────────────────────────────────────────
+
+server_print_connection_info() {
+    printf "\n${BOLD}=== Connection Information ===${NC}\n"
+    printf "${GREEN}Server setup complete!${NC}\n\n"
+    printf "  ${BOLD}Client command:${NC}\n"
+    printf "  ${CYAN}chisel client \\\\${NC}\n"
+    printf "  ${CYAN}  --auth \"%s:%s\" \\\\${NC}\n" "${AUTH_USER}" "${AUTH_TOKEN}"
+    printf "  ${CYAN}  --keepalive 25s \\\\${NC}\n"
+    printf "  ${CYAN}  https://%s:%s/%s/ \\\\${NC}\n" "${DOMAIN}" "${LISTEN_PORT}" "${SECRET_PATH}"
+    printf "  ${CYAN}  socks${NC}\n"
+    printf "\n"
+    printf "  ${BOLD}SOCKS5 proxy will be available at:${NC} 127.0.0.1:1080\n"
+    printf "\n"
+    printf "  ${BOLD}Server config file:${NC} /etc/proxyebator/server.conf\n"
+    printf "\n"
+    printf "  ${YELLOW}Note: Use 'socks' (not 'R:socks') --- 'socks' means traffic exits via server.${NC}\n"
+    printf "  ${YELLOW}Note: The trailing slash in the URL is required.${NC}\n"
+}
+
+server_verify() {
+    local all_ok=true
+
+    printf "\n${BOLD}=== Post-Install Verification ===${NC}\n"
+
+    # Check 1: proxyebator.service active (SRV-01)
+    if systemctl is-active --quiet proxyebator 2>/dev/null; then
+        log_info "[PASS] proxyebator.service is active"
+    else
+        log_warn "[FAIL] proxyebator.service is NOT active"
+        systemctl status proxyebator --no-pager >&2 2>/dev/null || true
+        all_ok=false
+    fi
+
+    # Check 2: Tunnel port bound to 127.0.0.1 only (SRV-04)
+    if ss -tlnp 2>/dev/null | grep ':7777 ' | grep -q '127.0.0.1'; then
+        log_info "[PASS] Tunnel port 7777 bound to 127.0.0.1"
+    else
+        log_warn "[FAIL] Tunnel port 7777 NOT bound to 127.0.0.1 --- SECURITY RISK"
+        ss -tlnp 2>/dev/null | grep ':7777 ' >&2 || true
+        all_ok=false
+    fi
+
+    # Check 3: Decoy site returns HTTP 200
+    local http_code
+    http_code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "https://${DOMAIN}/" 2>/dev/null || echo "000")
+    if [[ "$http_code" == "200" ]]; then
+        log_info "[PASS] Cover site https://${DOMAIN}/ returns HTTP 200"
+    else
+        log_warn "[FAIL] Cover site returned HTTP $http_code (expected 200)"
+        all_ok=false
+    fi
+
+    # Check 4: WebSocket path reachable (404/200/101 all acceptable)
+    # 404 is normal without WebSocket upgrade headers; 101 means upgrade succeeded
+    local ws_code
+    ws_code=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" \
+        "https://${DOMAIN}:${LISTEN_PORT}/${SECRET_PATH}/" 2>/dev/null || echo "000")
+    if [[ "$ws_code" == "404" || "$ws_code" == "200" || "$ws_code" == "101" ]]; then
+        log_info "[PASS] WebSocket path /${SECRET_PATH}/ is reachable (HTTP $ws_code)"
+    else
+        log_warn "[FAIL] WebSocket path returned HTTP $ws_code"
+        all_ok=false
+    fi
+
+    # Summary banner
+    if [[ "$all_ok" == "true" ]]; then
+        printf "\n${GREEN}${BOLD}All checks passed.${NC}\n"
+    else
+        printf "\n${YELLOW}${BOLD}Some checks failed — review warnings above.${NC}\n"
+        printf "${YELLOW}Connection info is still provided below for manual debugging.${NC}\n"
+    fi
+
+    # Always print connection info (partial success is still useful)
+    server_print_connection_info
+}
+
 server_main() {
     check_root
     detect_os

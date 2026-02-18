@@ -31,7 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Script correctly detects amd64 and arm64 architecture and prints it
   4. Colored log messages (info, warn, die) are visible in terminal output during any mode
   5. Running `./proxyebator.sh server` generates and prints a 32-char hex secret path and a 32-char base64 auth token
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Script skeleton: shebang, safety flags, ANSI colors, logging functions, usage, mode stubs, CLI dispatcher
+- [ ] 01-02-PLAN.md — Detection + secrets: detect_os, detect_arch, check_root, gen_secret_path, gen_auth_token, server_main wired
 
 ### Phase 2: Server Core
 **Goal**: Users can run `./proxyebator.sh server` on a fresh Debian/Ubuntu VPS and get a running masked Chisel tunnel with HTTPS and a website decoy
@@ -97,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Script Foundation | 0/? | Not started | - |
+| 1. Script Foundation | 0/2 | Not started | - |
 | 2. Server Core | 0/? | Not started | - |
 | 3. Verification Suite | 0/? | Not started | - |
 | 4. Client Mode | 0/? | Not started | - |

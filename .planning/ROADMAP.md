@@ -12,7 +12,7 @@ Six phases deliver a complete masked WebSocket proxy deployment tool. Phase 1 bu
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Script Foundation** - Bash skeleton, OS/arch detection, utility functions, secret generation
+- [x] **Phase 1: Script Foundation** - Bash skeleton, OS/arch detection, utility functions, secret generation (completed 2026-02-18)
 - [ ] **Phase 2: Server Core** - Full server install: dependencies, binary download, nginx masking, TLS, systemd service
 - [ ] **Phase 3: Verification Suite** - Post-install checks that catch silent failures before telling user it works
 - [ ] **Phase 4: Client Mode** - Client binary download, SOCKS5 connection, GUI client output
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Script Foundation | 0/2 | Not started | - |
+| 1. Script Foundation | 0/2 | Complete    | 2026-02-18 |
 | 2. Server Core | 0/? | Not started | - |
 | 3. Verification Suite | 0/? | Not started | - |
 | 4. Client Mode | 0/? | Not started | - |

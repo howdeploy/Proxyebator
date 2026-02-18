@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 2 of 6 (Server Core)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-18 — Phase 2 Plan 01 complete (server param collection, DNS validation, dep install)
+Last activity: 2026-02-18 — Phase 2 Plan 02 complete (Chisel binary download, auth file, systemd service)
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 37%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 1.5 min
-- Total execution time: 0.05 hours
+- Total plans completed: 3
+- Average duration: 1.3 min
+- Total execution time: 0.07 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-script-foundation | 2 | 3 min | 1.5 min |
-| 02-server-core | 1 | 2 min | 2 min |
+| 02-server-core | 2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min), 01-02 (2 min), 02-01 (2 min)
-- Trend: stable at ~2 min/plan
+- Last 5 plans: 01-01 (1 min), 01-02 (2 min), 02-01 (2 min), 02-02 (1 min)
+- Trend: stable at ~1-2 min/plan
 
 *Updated after each plan completion*
 
@@ -61,6 +61,11 @@ Recent decisions affecting current work:
 - [Phase 02-server-core plan 01]: CLI_MODE flag pattern: read DOMAIN before prompts, set true if pre-populated — single flag drives all non-interactive bypasses
 - [Phase 02-server-core plan 01]: Cloudflare detection warns but does not abort — operator may use grey-cloud after install
 - [Phase 02-server-core plan 01]: snap-first certbot with PKG_INSTALL fallback: snap gives latest certbot on any distro
+- [Phase 02-server-core plan 02]: GitHub API version detection with v1.11.3 fallback: install works when API is rate-limited or unreachable
+- [Phase 02-server-core plan 02]: Chisel releases .gz not .tar.gz — gunzip directly, not tar
+- [Phase 02-server-core plan 02]: --authfile over CLI --auth: credentials stay out of ps aux and /proc/*/cmdline
+- [Phase 02-server-core plan 02]: User=nobody not DynamicUser=yes: DynamicUser rotates UID on restart, breaks authfile ownership
+- [Phase 02-server-core plan 02]: --reverse omitted from Chisel ExecStart: SOCKS5 doesn't need it, reduces attack surface
 
 ### Pending Todos
 
@@ -74,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-server-core 02-01-PLAN.md
+Stopped at: Completed 02-server-core 02-02-PLAN.md
 Resume file: None

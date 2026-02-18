@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Human or AI agent runs one script, answers questions, gets a working masked SOCKS5 tunnel
-**Current focus:** Phase 5 - Uninstall and Robustness
+**Current focus:** Phase 6 - wstunnel backend addition
 
 ## Current Position
 
-Phase: 5 of 6 (Uninstall and Robustness)
-Plan: 1 of 2 in current phase (IN PROGRESS)
-Status: Phase 5 plan 01 complete — uninstall command implemented
-Last activity: 2026-02-18 — 05-01 complete (uninstall command with 6 sub-functions, --yes flag, NGINX_INJECTED)
+Phase: 5 of 6 (Uninstall and Robustness) COMPLETE
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 5 complete — uninstall command + server idempotency guards implemented
+Last activity: 2026-02-18 — 05-02 complete (4 idempotency guards, server_collect_params re-run detection, TUNNEL-07 compliance comment)
 
-Progress: [█████████░] 85%
+Progress: [█████████▓] 92%
 
 ## Performance Metrics
 
@@ -31,10 +31,10 @@ Progress: [█████████░] 85%
 | 02-server-core | 4 | 6 min | 1.5 min |
 | 03-verification-suite | 2 | 4 min | 2 min |
 | 04-client-mode | 2 | 4 min | 2 min |
-| 05-uninstall-and-robustness | 1 | 2 min | 2 min |
+| 05-uninstall-and-robustness | 2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (2 min)
+- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (2 min), 05-02 (1 min)
 - Trend: stable at ~2 min/plan
 
 *Updated after each plan completion*
@@ -94,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase 05-uninstall-and-robustness]: NGINX_INJECTED written to server.conf during install: enables uninstall to decide between sed-remove-block vs full file delete
 - [Phase 05-uninstall-and-robustness]: rmdir not rm -rf for /etc/chisel and /etc/proxyebator: preserves user files, only removes dir if empty
 - [Phase 05-uninstall-and-robustness]: TLS cert explicitly NOT removed: Let's Encrypt rate limits make cert deletion a manual post-uninstall step
+- [Phase 05]: is-active (not is-enabled) for systemd idempotency: enabled-but-stopped service gets recreated
+- [Phase 05]: -x (executable) check for chisel binary: ensures binary is functional, not just present
+- [Phase 05]: server_collect_params sources existing server.conf to preserve AUTH_TOKEN and SECRET_PATH on re-run
 
 ### Pending Todos
 
@@ -107,5 +110,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 05-uninstall-and-robustness 05-01-PLAN.md (uninstall command with 6 sub-functions, --yes flag, NGINX_INJECTED flag — 1 of 2 Phase 5 plans done)
+Stopped at: Completed 05-uninstall-and-robustness 05-02-PLAN.md (server idempotency guards + re-run detection — Phase 5 complete, 2 of 2 plans done)
 Resume file: None

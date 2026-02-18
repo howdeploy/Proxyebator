@@ -110,12 +110,16 @@ Plans:
   3. The README contains copy-paste SOCKS5 setup instructions for Throne (Linux), nekoray/nekobox (Linux/Windows), and Proxifier (Windows/macOS)
   4. The README contains a "Copy this and send to your AI assistant" block with numbered deployment steps that an AI agent can follow without additional context
   5. The README contains a troubleshooting section covering the known pitfalls: Cloudflare orange cloud, DNS leaks, TUN routing loops
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — wstunnel backend: download, systemd, server_main branching, client support, uninstall, firewall, connection info
+- [ ] 06-02-PLAN.md — README.md: shields.io badges, parameter tables, details blocks, GUI client instructions, AI-agent block, troubleshooting
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -124,4 +128,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Verification Suite | 0/2 | Complete    | 2026-02-18 |
 | 4. Client Mode | 0/2 | Complete    | 2026-02-18 |
 | 5. Uninstall and Robustness | 0/2 | Complete    | 2026-02-18 |
-| 6. wstunnel Backend and README | 0/? | Not started | - |
+| 6. wstunnel Backend and README | 0/2 | Not started | - |

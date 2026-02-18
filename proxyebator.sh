@@ -425,8 +425,248 @@ UNIT
     log_info "Chisel systemd service: $(systemctl is-active proxyebator 2>/dev/null || echo 'unknown')"
 }
 
-# ── MODE STUBS ────────────────────────────────────────────────────────────────
-# Filled in by later phases/plans
+# ── NGINX CONFIGURATION ───────────────────────────────────────────────────────
+
+detect_existing_nginx() {
+    local existing
+    existing=$(grep -rl "server_name.*${DOMAIN}" /etc/nginx/ 2>/dev/null | head -1)
+    if [[ -n "$existing" ]]; then
+        NGINX_EXISTING_CONF="$existing"
+        log_warn "Found existing nginx config for ${DOMAIN}: ${NGINX_EXISTING_CONF}"
+    else
+        NGINX_EXISTING_CONF=""
+    fi
+}
+
+generate_masquerade_block() {
+    # MASK-06 (HTTPS-only without nginx) removed by design --- nginx is always used.
+    # All three modes (stub/proxy/static) go through nginx.
+    case "${MASQUERADE_MODE:-stub}" in
+        stub)
+            cat << 'NGINX_STUB'
+    location / {
+        return 200 '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Welcome</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f5}div{text-align:center;color:#333}</style></head><body><div><h1>Welcome</h1><p>This site is under construction.</p></div></body></html>';
+        add_header Content-Type text/html;
+    }
+NGINX_STUB
+            ;;
+        proxy)
+            local proxy_host
+            proxy_host=$(printf '%s' "${PROXY_URL:-}" | sed 's|https\?://||;s|/.*||')
+            cat << NGINX_PROXY
+    location / {
+        proxy_pass ${PROXY_URL:-};
+        proxy_set_header Host ${proxy_host};
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_ssl_server_name on;
+    }
+NGINX_PROXY
+            ;;
+        static)
+            cat << NGINX_STATIC
+    root ${STATIC_PATH:-/var/www/html};
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+NGINX_STATIC
+            ;;
+    esac
+}
+
+generate_tunnel_location_block() {
+    # CRITICAL: proxy_pass trailing slash is MANDATORY — strips /SECRET_PATH/ prefix
+    # CRITICAL: proxy_buffering off is MANDATORY — without it WebSocket data is buffered silently
+    # Neither directive is configurable.
+    cat << TUNNEL_BLOCK
+    # proxyebator-tunnel-block-start
+    location /${SECRET_PATH}/ {
+        proxy_pass http://127.0.0.1:7777/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+    # proxyebator-tunnel-block-end
+TUNNEL_BLOCK
+}
+
+server_configure_nginx() {
+    detect_existing_nginx
+
+    if [[ -n "${NGINX_EXISTING_CONF:-}" ]]; then
+        # Existing config found --- inject tunnel block, do not replace
+        if grep -q "proxyebator-tunnel-block-start" "$NGINX_EXISTING_CONF" 2>/dev/null; then
+            log_info "Tunnel block already present in ${NGINX_EXISTING_CONF} --- skipping injection"
+        else
+            # Backup the existing config before modifying
+            cp "$NGINX_EXISTING_CONF" "${NGINX_EXISTING_CONF}.bak.$(date +%s)"
+            log_info "Backed up existing nginx config"
+
+            local tunnel_block tmpconf
+            tunnel_block=$(generate_tunnel_location_block)
+            tmpconf=$(mktemp)
+            # Insert tunnel block before first 'location /' line
+            awk -v block="$tunnel_block" '/location \/ \{/ && !inserted {print block; inserted=1} {print}' \
+                "$NGINX_EXISTING_CONF" > "$tmpconf"
+            mv "$tmpconf" "$NGINX_EXISTING_CONF"
+            log_info "Tunnel location block injected into existing nginx config"
+        fi
+        NGINX_CONF_PATH="$NGINX_EXISTING_CONF"
+
+        # Cert already exists --- write full SSL config now
+        if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+            CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+            CERT_KEY_PATH="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+            nginx -t || die "nginx configuration test failed after injection"
+            systemctl reload nginx || die "Failed to reload nginx"
+        else
+            nginx -t || die "nginx configuration test failed after injection"
+            systemctl reload nginx || die "Failed to reload nginx"
+        fi
+    else
+        # New setup --- write fresh config
+        NGINX_CONF_PATH="${NGINX_CONF_DIR}/proxyebator-${DOMAIN}.conf"
+
+        if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+            # Cert exists --- write full SSL config directly
+            CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+            CERT_KEY_PATH="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+            write_nginx_ssl_config
+        else
+            # No cert yet --- write minimal HTTP-only config for certbot ACME challenge
+            log_info "Writing temporary HTTP-only nginx config for certbot ACME challenge..."
+            cat > "$NGINX_CONF_PATH" << NGINX_HTTP
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location / {
+        return 200 'Preparing TLS...';
+        add_header Content-Type text/plain;
+    }
+}
+NGINX_HTTP
+
+            # Create symlink for Debian/Ubuntu (sites-enabled)
+            if [[ -n "${NGINX_CONF_LINK:-}" ]]; then
+                ln -sf "$NGINX_CONF_PATH" "${NGINX_CONF_LINK}/$(basename "$NGINX_CONF_PATH")"
+                log_info "Created symlink: ${NGINX_CONF_LINK}/$(basename "$NGINX_CONF_PATH")"
+            fi
+
+            nginx -t || die "nginx configuration test failed"
+            systemctl reload nginx || die "Failed to reload nginx"
+            log_info "Temporary HTTP nginx config active — certbot ACME will use port 80"
+        fi
+    fi
+}
+
+# ── TLS CERTIFICATE ACQUISITION ───────────────────────────────────────────────
+
+check_existing_cert() {
+    # Check Let's Encrypt standard path first
+    if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+        CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+        CERT_KEY_PATH="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+        return 0
+    fi
+
+    # Check existing nginx config for ssl_certificate directive (non-LE certs)
+    if [[ -n "${NGINX_EXISTING_CONF:-}" ]]; then
+        local existing_cert
+        existing_cert=$(grep -o 'ssl_certificate [^;]*' "$NGINX_EXISTING_CONF" 2>/dev/null | awk '{print $2}' | head -1)
+        if [[ -n "$existing_cert" && -f "$existing_cert" ]]; then
+            CERT_PATH="$existing_cert"
+            CERT_KEY_PATH=$(grep -o 'ssl_certificate_key [^;]*' "$NGINX_EXISTING_CONF" 2>/dev/null | awk '{print $2}' | head -1)
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+write_nginx_ssl_config() {
+    # Only for NEW configs — existing configs already have SSL, we only injected the tunnel block
+    [[ -n "${NGINX_EXISTING_CONF:-}" ]] && return 0
+
+    local tunnel_block masquerade_block
+    tunnel_block=$(generate_tunnel_location_block)
+    masquerade_block=$(generate_masquerade_block)
+
+    cat > "$NGINX_CONF_PATH" << NGINX_SSL
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen ${LISTEN_PORT} ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate     ${CERT_PATH};
+    ssl_certificate_key ${CERT_KEY_PATH};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+${tunnel_block}
+${masquerade_block}
+}
+NGINX_SSL
+
+    # Create symlink for Debian/Ubuntu (sites-enabled) if not already present
+    if [[ -n "${NGINX_CONF_LINK:-}" ]]; then
+        local symlink_path="${NGINX_CONF_LINK}/$(basename "$NGINX_CONF_PATH")"
+        if [[ ! -L "$symlink_path" ]]; then
+            ln -sf "$NGINX_CONF_PATH" "$symlink_path"
+            log_info "Created symlink: $symlink_path"
+        fi
+    fi
+
+    nginx -t || die "nginx configuration test failed"
+    systemctl reload nginx || die "Failed to reload nginx"
+    log_info "nginx configured with TLS and masquerade mode: ${MASQUERADE_MODE}"
+}
+
+server_obtain_tls() {
+    if check_existing_cert; then
+        log_info "TLS cert already exists --- reusing (${CERT_PATH})"
+        # If this is a new config (not existing), write full SSL config now
+        write_nginx_ssl_config
+    else
+        # Ensure nginx is running for --nginx plugin
+        systemctl start nginx 2>/dev/null || true
+
+        log_info "Obtaining TLS certificate via certbot for ${DOMAIN}..."
+        certbot certonly \
+            --nginx \
+            --non-interactive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            -d "$DOMAIN" \
+            || die "certbot failed to obtain TLS certificate for $DOMAIN. Check DNS and port 80 access."
+
+        CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+        CERT_KEY_PATH="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+
+        # Write full SSL config (replaces the temporary HTTP-only config)
+        write_nginx_ssl_config
+    fi
+
+    # Enable certbot renewal timer
+    if systemctl list-units --type=timer 2>/dev/null | grep -q "snap.certbot"; then
+        systemctl enable --now snap.certbot.renew.timer 2>/dev/null || true
+    else
+        systemctl enable --now certbot.timer 2>/dev/null || true
+    fi
+
+    log_info "TLS certificate active for ${DOMAIN}"
+}
 
 server_main() {
     check_root
@@ -438,9 +678,10 @@ server_main() {
     server_download_chisel
     server_setup_auth
     server_create_systemd
-    # Phase 2 Plan 03+ will add: server_configure_nginx, server_obtain_tls,
-    # server_configure_firewall, server_save_config, server_verify
-    log_warn "Phase 2 Plan 02 complete: Chisel installed and running. Remaining: nginx, TLS, firewall."
+    server_configure_nginx
+    server_obtain_tls
+    # Phase 2 Plan 04 will add: server_configure_firewall, server_save_config, server_verify
+    log_warn "Phase 2 Plan 03 complete: nginx + TLS configured. Remaining: firewall, config, verify."
 }
 
 client_main() {

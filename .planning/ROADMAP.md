@@ -113,7 +113,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Script Foundation | 0/2 | Complete    | 2026-02-18 |
 | 2. Server Core | 0/4 | Complete    | 2026-02-18 |
-| 3. Verification Suite | 0/2 | Planning complete | - |
+| 3. Verification Suite | 0/2 | Planned | - |
 | 4. Client Mode | 0/? | Not started | - |
 | 5. Uninstall and Robustness | 0/? | Not started | - |
 | 6. wstunnel Backend and README | 0/? | Not started | - |

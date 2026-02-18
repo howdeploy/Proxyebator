@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Server Core** - Full server install: dependencies, binary download, nginx masking, TLS, systemd service (completed 2026-02-18)
 - [x] **Phase 3: Verification Suite** - Post-install checks that catch silent failures before telling user it works (completed 2026-02-18)
 - [x] **Phase 4: Client Mode** - Client binary download, SOCKS5 connection, GUI client output (completed 2026-02-18)
-- [ ] **Phase 5: Uninstall and Robustness** - Full uninstall, idempotency guards, credential file hygiene
+- [x] **Phase 5: Uninstall and Robustness** - Full uninstall, idempotency guards, credential file hygiene (completed 2026-02-18)
 - [ ] **Phase 6: wstunnel Backend and README** - Second tunnel backend, complete Russian README with AI-agent block
 
 ## Phase Details
@@ -123,5 +123,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Server Core | 0/4 | Complete    | 2026-02-18 |
 | 3. Verification Suite | 0/2 | Complete    | 2026-02-18 |
 | 4. Client Mode | 0/2 | Complete    | 2026-02-18 |
-| 5. Uninstall and Robustness | 0/2 | Planned     | - |
+| 5. Uninstall and Robustness | 0/2 | Complete    | 2026-02-18 |
 | 6. wstunnel Backend and README | 0/? | Not started | - |

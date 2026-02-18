@@ -249,6 +249,121 @@ client_collect_params() {
     log_info "Connection params: host=${CLIENT_HOST} port=${CLIENT_PORT} path=${CLIENT_PATH}"
 }
 
+# ── CLIENT BINARY DOWNLOAD ────────────────────────────────────────────────────
+
+client_download_chisel() {
+    local install_dir
+
+    # Reuse existing binary if already in PATH
+    if command -v chisel &>/dev/null; then
+        log_info "chisel already installed: $(chisel --version 2>&1 | head -1)"
+        CHISEL_BIN="$(command -v chisel)"
+        return
+    fi
+
+    # Determine install location (user-writable, no root needed)
+    if [[ -w "/usr/local/bin" ]]; then
+        install_dir="/usr/local/bin"
+    else
+        install_dir="${HOME}/.local/bin"
+        mkdir -p "$install_dir"
+        # Warn if not in PATH
+        case ":${PATH}:" in
+            *":${install_dir}:"*) ;;
+            *) log_warn "${install_dir} is not in PATH — add: export PATH=\"\$PATH:${install_dir}\"" ;;
+        esac
+    fi
+
+    local CHISEL_FALLBACK_VER="v1.11.3"
+    local CHISEL_VER
+    CHISEL_VER=$(curl -sf --max-time 10 \
+        "https://api.github.com/repos/jpillora/chisel/releases/latest" \
+        | grep -o '"tag_name": "[^"]*"' | grep -o 'v[0-9.]*') \
+        || CHISEL_VER=""
+
+    if [[ -z "$CHISEL_VER" ]]; then
+        log_warn "GitHub API unavailable — using fallback version ${CHISEL_FALLBACK_VER}"
+        CHISEL_VER="$CHISEL_FALLBACK_VER"
+    fi
+
+    # Asset: chisel_X.Y.Z_{linux|darwin}_{amd64|arm64}.gz
+    local download_url="https://github.com/jpillora/chisel/releases/download/${CHISEL_VER}/chisel_${CHISEL_VER#v}_${CLIENT_OS}_${ARCH}.gz"
+    log_info "Downloading Chisel ${CHISEL_VER} for ${CLIENT_OS}/${ARCH}..."
+
+    curl -fLo /tmp/chisel_client.gz "$download_url" \
+        || die "Failed to download Chisel from ${download_url}"
+
+    gunzip -f /tmp/chisel_client.gz
+    chmod +x /tmp/chisel_client
+
+    # macOS Gatekeeper: remove quarantine attribute (downloaded binaries are quarantined)
+    if [[ "${CLIENT_OS}" == "darwin" ]]; then
+        xattr -d com.apple.quarantine /tmp/chisel_client 2>/dev/null || true
+        log_info "macOS: quarantine attribute removed from binary"
+    fi
+
+    mv /tmp/chisel_client "${install_dir}/chisel"
+
+    # Verify
+    "${install_dir}/chisel" --version \
+        || die "Chisel binary not working after install"
+    log_info "Chisel installed at ${install_dir}/chisel: $("${install_dir}/chisel" --version 2>&1 | head -1)"
+
+    CHISEL_BIN="${install_dir}/chisel"
+}
+
+# ── CLIENT SOCKS PORT CHECK ───────────────────────────────────────────────────
+
+client_check_socks_port() {
+    SOCKS_PORT="${CLIENT_SOCKS_PORT:-1080}"
+
+    _port_in_use() {
+        local p="$1"
+        if command -v ss &>/dev/null; then
+            ss -tlnp 2>/dev/null | grep -q ":${p} "
+        elif command -v lsof &>/dev/null; then
+            lsof -i ":${p}" 2>/dev/null | grep -q LISTEN
+        else
+            return 1  # Can't check, assume free
+        fi
+    }
+
+    if _port_in_use "$SOCKS_PORT"; then
+        log_warn "Port ${SOCKS_PORT} is already in use"
+        printf "${CYAN}[?]${NC} Введите другой порт для SOCKS5 [1081]: "
+        read -r SOCKS_PORT
+        SOCKS_PORT="${SOCKS_PORT:-1081}"
+        if _port_in_use "$SOCKS_PORT"; then
+            die "Порт ${SOCKS_PORT} тоже занят. Укажите свободный порт через --socks-port"
+        fi
+    fi
+
+    log_info "SOCKS5 будет на 127.0.0.1:${SOCKS_PORT}"
+}
+
+# ── CLIENT GUI INSTRUCTIONS ───────────────────────────────────────────────────
+
+client_print_gui_instructions() {
+    printf "\n${BOLD}=== Параметры SOCKS5 ===${NC}\n"
+    printf "  Адрес:    ${CYAN}127.0.0.1${NC}\n"
+    printf "  Порт:     ${CYAN}%s${NC}\n" "${SOCKS_PORT}"
+    printf "  Протокол: ${CYAN}SOCKS5${NC}\n"
+    printf "  DNS:      ${CYAN}через прокси${NC} (SOCKS5 remote DNS)\n"
+    printf "\n"
+    printf "${BOLD}=== Настройка клиентов ===${NC}\n"
+    printf "  ${BOLD}Throne (Linux):${NC}            Профиль → SOCKS → 127.0.0.1:%s\n" "${SOCKS_PORT}"
+    printf "  ${BOLD}nekoray (Linux/Windows):${NC}   Server → Add → SOCKS5 → 127.0.0.1:%s\n" "${SOCKS_PORT}"
+    printf "  ${BOLD}Proxifier (Win/Mac):${NC}        Proxy Servers → Add → SOCKS Version 5 → 127.0.0.1:%s\n" "${SOCKS_PORT}"
+    printf "  ${BOLD}Surge (macOS):${NC}             Proxy → Add → SOCKS5 → 127.0.0.1:%s\n" "${SOCKS_PORT}"
+    printf "  ${BOLD}Firefox:${NC}                   Настройки → Прокси → SOCKS v5 → 127.0.0.1:%s → ☑ Proxy DNS\n" "${SOCKS_PORT}"
+    printf "  ${BOLD}Chrome (SwitchyOmega):${NC}     Profile → SOCKS5 → 127.0.0.1:%s\n" "${SOCKS_PORT}"
+    printf "\n"
+    printf "${BOLD}=== Проверка ===${NC}\n"
+    printf "  ${CYAN}curl --socks5-hostname localhost:%s https://ifconfig.me${NC}\n" "${SOCKS_PORT}"
+    printf "  (должен вернуть IP сервера, не ваш)\n"
+    printf "\n"
+}
+
 # ── SECRET GENERATION ─────────────────────────────────────────────────────────
 gen_secret_path() {
     # 32 hex chars = 128 bits entropy

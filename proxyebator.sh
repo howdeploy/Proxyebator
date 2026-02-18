@@ -141,6 +141,114 @@ detect_arch() {
     log_info "Detected architecture: $ARCH"
 }
 
+# ── CLIENT OS DETECTION ───────────────────────────────────────────────────────
+
+detect_client_os() {
+    local kernel
+    kernel="$(uname -s)"
+    case "$kernel" in
+        Linux)  CLIENT_OS="linux"  ;;
+        Darwin) CLIENT_OS="darwin" ;;
+        *)      die "Unsupported client OS: ${kernel}. Supported: Linux (including WSL), macOS (Darwin)" ;;
+    esac
+    log_info "Client OS: ${CLIENT_OS}"
+}
+
+# ── CLIENT PARAMETER COLLECTION ───────────────────────────────────────────────
+
+client_parse_url() {
+    local url="$1"
+    # Strip scheme (wss://, ws://, https://, http://)
+    local stripped
+    stripped="${url#*://}"
+
+    # user:pass@host:port/path
+    CLIENT_USER="${stripped%%:*}"
+    local after_user="${stripped#*:}"
+    CLIENT_PASS="${after_user%%@*}"
+    local after_at="${after_user#*@}"
+    # host:port/path or host/path
+    local host_port_path="$after_at"
+    local host_port="${host_port_path%%/*}"
+    CLIENT_PATH="/${host_port_path#*/}"
+
+    if [[ "$host_port" == *:* ]]; then
+        CLIENT_HOST="${host_port%%:*}"
+        CLIENT_PORT="${host_port##*:}"
+    else
+        CLIENT_HOST="$host_port"
+        CLIENT_PORT="443"
+    fi
+
+    # Normalize trailing slash
+    [[ "$CLIENT_PATH" == */ ]] || CLIENT_PATH="${CLIENT_PATH}/"
+
+    # Validate
+    [[ -n "$CLIENT_USER" ]] || die "Could not parse user from URL: $url"
+    [[ -n "$CLIENT_PASS" ]] || die "Could not parse password from URL: $url"
+    [[ -n "$CLIENT_HOST" ]] || die "Could not parse host from URL: $url"
+    [[ -n "$CLIENT_PATH" && "$CLIENT_PATH" != "/" ]] || die "Could not parse path from URL: $url"
+
+    log_info "URL parsed: host=${CLIENT_HOST} port=${CLIENT_PORT} path=${CLIENT_PATH} user=${CLIENT_USER}"
+}
+
+client_collect_interactive() {
+    # Non-interactive stdin detection
+    if [[ ! -t 0 ]]; then
+        if [[ -z "${CLIENT_HOST:-}" || -z "${CLIENT_PATH:-}" || -z "${CLIENT_PASS:-}" ]]; then
+            die "Non-interactive mode: missing required params. Use: ./proxyebator.sh client --host HOST --path PATH --pass PASS [--port PORT]"
+        fi
+    fi
+
+    if [[ -z "${CLIENT_HOST:-}" ]]; then
+        printf "${CYAN}[?]${NC} Хост сервера (например: example.com): "
+        read -r CLIENT_HOST
+        [[ -n "$CLIENT_HOST" ]] || die "Хост обязателен"
+    fi
+
+    if [[ -z "${CLIENT_PORT:-}" ]]; then
+        printf "${CYAN}[?]${NC} Порт сервера [443]: "
+        read -r CLIENT_PORT
+        CLIENT_PORT="${CLIENT_PORT:-443}"
+    fi
+
+    if [[ -z "${CLIENT_PATH:-}" ]]; then
+        printf "${CYAN}[?]${NC} Секретный путь (например: /abc123/): "
+        read -r CLIENT_PATH
+        [[ -n "$CLIENT_PATH" ]] || die "Путь обязателен"
+        # Normalize: ensure leading and trailing slashes
+        [[ "$CLIENT_PATH" == /* ]] || CLIENT_PATH="/${CLIENT_PATH}"
+        [[ "$CLIENT_PATH" == */ ]] || CLIENT_PATH="${CLIENT_PATH}/"
+    fi
+
+    if [[ -z "${CLIENT_PASS:-}" ]]; then
+        printf "${CYAN}[?]${NC} Пароль (токен авторизации): "
+        read -r CLIENT_PASS
+        [[ -n "$CLIENT_PASS" ]] || die "Пароль обязателен"
+    fi
+
+    # Default user to "proxyebator" (server always uses this)
+    CLIENT_USER="${CLIENT_USER:-proxyebator}"
+}
+
+client_collect_params() {
+    if [[ -n "${CLIENT_URL:-}" ]]; then
+        # Mode 1: URL string (highest priority)
+        client_parse_url "$CLIENT_URL"
+    elif [[ -n "${CLIENT_HOST:-}" || -n "${CLIENT_PASS:-}" ]]; then
+        # Mode 2: CLI flags (at least one flag set)
+        CLIENT_PORT="${CLIENT_PORT:-443}"
+        CLIENT_USER="${CLIENT_USER:-proxyebator}"
+        # Fill in any missing params via interactive
+        client_collect_interactive
+    else
+        # Mode 3: Full interactive
+        client_collect_interactive
+    fi
+
+    log_info "Connection params: host=${CLIENT_HOST} port=${CLIENT_PORT} path=${CLIENT_PATH}"
+}
+
 # ── SECRET GENERATION ─────────────────────────────────────────────────────────
 gen_secret_path() {
     # 32 hex chars = 128 bits entropy
@@ -992,7 +1100,11 @@ server_main() {
 }
 
 client_main() {
-    log_info "client_main: not yet implemented"
+    detect_arch
+    detect_client_os
+    client_collect_params
+    # Phase 4 Plan 02 adds: client_download_chisel, client_check_socks_port, client_run
+    log_info "Parameters collected. Binary download and connection not yet implemented."
 }
 
 uninstall_main() {

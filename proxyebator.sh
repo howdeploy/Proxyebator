@@ -65,6 +65,9 @@ ${BOLD}EXAMPLES${NC}
 
   # Uninstall
   sudo $(basename "$0") uninstall
+
+  # Non-interactive uninstall
+  sudo $(basename "$0") uninstall --yes
 EOF
 }
 
@@ -1258,8 +1261,140 @@ client_main() {
     # Note: client_run() uses exec — this line never executes
 }
 
+# ── UNINSTALL SUB-FUNCTIONS ───────────────────────────────────────────────────
+
+_uninstall_confirm() {
+    if [[ "${UNINSTALL_YES:-}" == "true" ]]; then
+        return
+    fi
+
+    printf "\n${YELLOW}The following will be removed:${NC}\n"
+    printf "  ${CYAN}Chisel binary:${NC}    /usr/local/bin/chisel\n"
+    printf "  ${CYAN}Auth file:${NC}        /etc/chisel/auth.json\n"
+    printf "  ${CYAN}Systemd service:${NC}  /etc/systemd/system/proxyebator.service\n"
+    printf "  ${CYAN}Nginx config:${NC}     %s\n" "${NGINX_CONF:-unknown}"
+    printf "  ${CYAN}Firewall rules:${NC}   80/tcp ALLOW, %s/tcp ALLOW, 7777/tcp DENY\n" "${LISTEN_PORT:-443}"
+    printf "  ${CYAN}Config dir:${NC}       /etc/proxyebator/\n"
+    printf "\n${YELLOW}TLS certificate will NOT be removed (Let's Encrypt rate limits).${NC}\n"
+    printf "\n"
+    printf "${CYAN}[?]${NC} Proceed with uninstall? [y/N]: "
+    read -r _confirm
+    case "${_confirm:-N}" in
+        y|Y|yes|YES) ;;
+        *) die "Uninstall aborted by user" ;;
+    esac
+}
+
+_uninstall_service() {
+    if systemctl is-active --quiet proxyebator 2>/dev/null; then
+        systemctl stop proxyebator 2>/dev/null || true
+        log_info "Stopped proxyebator.service"
+    fi
+    if systemctl is-enabled --quiet proxyebator 2>/dev/null; then
+        systemctl disable proxyebator 2>/dev/null || true
+    fi
+    if [[ -f /etc/systemd/system/proxyebator.service ]]; then
+        rm -f /etc/systemd/system/proxyebator.service
+        systemctl daemon-reload
+        systemctl reset-failed 2>/dev/null || true
+        log_info "Removed proxyebator.service"
+    else
+        log_info "proxyebator.service: not found, skipping"
+    fi
+}
+
+_uninstall_binary() {
+    if [[ -f /usr/local/bin/chisel ]]; then
+        rm -f /usr/local/bin/chisel
+        log_info "Removed /usr/local/bin/chisel"
+    else
+        log_info "Chisel binary: not found, skipping"
+    fi
+    if [[ -f /etc/chisel/auth.json ]]; then
+        rm -f /etc/chisel/auth.json
+        log_info "Removed /etc/chisel/auth.json"
+    fi
+    rmdir /etc/chisel 2>/dev/null || true
+}
+
+_uninstall_nginx() {
+    local nginx_conf="${NGINX_CONF:-}"
+    if [[ -z "$nginx_conf" ]]; then
+        log_info "NGINX_CONF not set in server.conf — skipping nginx cleanup"
+        return
+    fi
+
+    if [[ "${NGINX_INJECTED:-false}" == "true" ]]; then
+        # Injected into pre-existing config — remove only the tunnel block, not the file
+        if [[ -f "$nginx_conf" ]] && grep -q "proxyebator-tunnel-block-start" "$nginx_conf" 2>/dev/null; then
+            sed -i '/# proxyebator-tunnel-block-start/,/# proxyebator-tunnel-block-end/d' "$nginx_conf"
+            log_info "Removed tunnel block from existing nginx config: ${nginx_conf}"
+        else
+            log_info "Tunnel block not found in ${nginx_conf} — already removed or never injected"
+        fi
+    else
+        # proxyebator created this config — delete the file and symlink
+        if [[ -f "$nginx_conf" ]]; then
+            rm -f "$nginx_conf"
+            log_info "Removed nginx config: ${nginx_conf}"
+        else
+            log_info "Nginx config not found: ${nginx_conf} — skipping"
+        fi
+        # Remove symlink if NGINX_CONF_LINK is set (Debian/Ubuntu)
+        if [[ -n "${NGINX_CONF_LINK:-}" ]]; then
+            rm -f "${NGINX_CONF_LINK}/$(basename "${nginx_conf}")" 2>/dev/null || true
+        fi
+        # Remove timestamped backup files
+        rm -f "${nginx_conf}.bak."* 2>/dev/null || true
+    fi
+
+    # Reload nginx if it is running
+    if systemctl is-active --quiet nginx 2>/dev/null; then
+        nginx -t 2>/dev/null && systemctl reload nginx || true
+    fi
+}
+
+_uninstall_firewall() {
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        ufw delete allow 80/tcp 2>/dev/null || true
+        ufw delete allow "${LISTEN_PORT:-443}/tcp" 2>/dev/null || true
+        ufw delete deny 7777/tcp 2>/dev/null || true
+        log_info "Firewall rules removed via ufw"
+    else
+        iptables -D INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+        iptables -D INPUT -p tcp --dport "${LISTEN_PORT:-443}" -j ACCEPT 2>/dev/null || true
+        iptables -D INPUT -p tcp --dport 7777 ! -i lo -j DROP 2>/dev/null || true
+        log_info "Firewall rules removed via iptables"
+    fi
+}
+
+_uninstall_config() {
+    rm -f /etc/proxyebator/server.conf
+    rmdir /etc/proxyebator 2>/dev/null || true
+    log_info "Removed /etc/proxyebator/"
+}
+
+# ── UNINSTALL MAIN ────────────────────────────────────────────────────────────
+
 uninstall_main() {
-    log_info "uninstall_main: not yet implemented"
+    check_root
+    detect_os   # needed for NGINX_CONF_LINK
+
+    [[ -f /etc/proxyebator/server.conf ]] \
+        || die "No installation found at /etc/proxyebator/server.conf"
+    # shellcheck disable=SC1091
+    source /etc/proxyebator/server.conf
+
+    _uninstall_confirm
+    _uninstall_service
+    _uninstall_binary
+    _uninstall_nginx
+    _uninstall_firewall
+    _uninstall_config
+
+    log_info "Uninstall complete"
+    log_info "TLS certificate preserved at: /etc/letsencrypt/live/${DOMAIN:-unknown}/"
+    log_info "To remove certificate: certbot delete --cert-name ${DOMAIN:-unknown}"
 }
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
